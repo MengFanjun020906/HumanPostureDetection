@@ -1,0 +1,69 @@
+{
+    "calibration_date": "2025-11-03T10:47:39.496767",
+    "image_size": {
+        "width": 1280,
+        "height": 720
+    },
+    "chessboard": {
+        "size": [
+            9,
+            6
+        ],
+        "square_size_m": 0.025
+    },
+    "reprojection_error": {
+        "rms": 0.7794006555304862,
+        "mean": 0.09940476936841627
+    },
+    "camera_matrix": [
+        [
+            1168.2779876525813,
+            0.0,
+            639.5
+        ],
+        [
+            0.0,
+            1165.0045420658028,
+            359.5
+        ],
+        [
+            0.0,
+            0.0,
+            1.0
+        ]
+    ],
+    "distortion_coefficients": [
+        -6.054556640825926,
+        3.7923312936349416,
+        -0.005103335115957107,
+        -0.003961109361445925,
+        49.15771848849872,
+        -5.625067636948116,
+        0.007277810782107508,
+        59.765401698462135,
+        0.011803968327156283,
+        -0.00681806888470557,
+        0.009888799293914924,
+        0.006207704293538651
+    ],
+    "used_images_count": 17,
+    "used_images": [
+        "calibration10.jpg",
+        "calibration11.jpg",
+        "calibration12.jpg",
+        "calibration13.jpg",
+        "calibration14.jpg",
+        "calibration15.jpg",
+        "calibration16.jpg",
+        "calibration17.jpg",
+        "calibration18.jpg",
+        "calibration19.jpg",
+        "calibration2.jpg",
+        "calibration20.jpg",
+        "calibration3.jpg",
+        "calibration6.jpg",
+        "calibration7.jpg",
+        "calibration8.jpg",
+        "calibration9.jpg"
+    ]
+}
