@@ -470,8 +470,8 @@ def visualize_calibration_results(mtx, dist, image_files):
     comparison[:, w:] = cv2.resize(dst_cropped, (w, h))
     
     # 添加标注
-    cv2.putText(comparison, "原始图像 (带畸变)", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-    cv2.putText(comparison, "校正后图像", (w+50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    cv2.putText(comparison, "Orignal Image", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    cv2.putText(comparison, "Distortion Correction Image", (w+50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
     
     # 保存对比图
     vis_dir = "calibration_results/visualizations"
