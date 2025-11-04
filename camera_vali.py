@@ -156,7 +156,7 @@ if __name__ == "__main__":
         print(f"fx: {fx:.3f} 像素")
         print(f"篮球像素直径: {d_px:.2f} 像素")
         print(f"篮球实际直径: {args.diameter_m:.3f} 米")
-        # fx：相机焦距 D：篮球真实直径 d_px:篮球像素直径
+        # fx：相机焦距 D：篮球真实直径 d_px: 篮球像素直径
         print(f"估计相机到篮球距离 Z: {Z:.3f} 米  (公式: Z = fx*D/d_px)")
         raise SystemExit(0)
 
