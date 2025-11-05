@@ -338,6 +338,24 @@ def perform_calibration():
         h, w = cv2.imread(valid_images[0]).shape[:2]
         
         # 执行标定
+        # 执行相机标定
+        # cv2.calibrateCamera 函数参数详解：
+        # 参数1: objpoints - 3D世界坐标系中的点集合，形状为 [n_images, n_points, 3] 的数组
+        #        每个元素表示棋盘格在世界坐标系中的3D坐标，通常Z坐标为0
+        # 参数2: imgpoints - 2D图像坐标系中的点集合，形状为 [n_images, n_points, 2] 的数组
+        #        每个元素表示棋盘格角点在图像中的像素坐标
+        # 参数3: (w, h) - 图像尺寸，即图像的宽度和高度（像素）
+        # 参数4: None - 相机内参矩阵的初始估计值，设为None表示由函数自动计算
+        # 参数5: None - 畸变系数的初始估计值，设为None表示由函数自动计算
+        # 参数6: flags - 标定标志位，Config.CALIB_FLAGS定义了使用的标定模型
+        # 参数7: criteria - 迭代优化的终止条件，格式为(类型, 最大迭代次数, 精度阈值)
+        #
+        # 返回值：
+        # ret - 重投影误差的RMS值（像素），评估标定精度的重要指标
+        # mtx - 相机内参矩阵(K)，3x3矩阵，包含焦距和主点坐标
+        # dist - 畸变系数数组，包含径向畸变和切向畸变系数
+        # rvecs - 旋转向量列表，每个图像对应一个旋转向量
+        # tvecs - 平移向量列表，每个图像对应一个平移向量
         ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(
             objpoints, imgpoints, (w, h),
             None, None,
