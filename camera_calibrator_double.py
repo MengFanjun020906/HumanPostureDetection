@@ -570,8 +570,3 @@ if __name__ == "__main__":
     print("\n" + "="*60)
     print("标定流程完成!")
     print("="*60)
-    print("下一步建议:")
-    print("1. 检查 rectification_visualization.jpg 确认校正效果")
-    print("2. 在篮球绕杆应用中加载 stereo_calibration.xml")
-    print("3. 使用 initUndistortRectifyMap + remap 实时校正")
-    print("4. 通过立体匹配计算深度图 (如StereoBM/StereoSGBM)")
