@@ -291,3 +291,7 @@ if __name__ == "__main__":
     rms_th = args.rms if hasattr(args, 'rms') else 0.6
     exit_code = validate_calibration(calib, test, rms_th)
     raise SystemExit(exit_code)
+
+'''
+python camera_vali.py position --u 1000 --v 300 --diameter-m 0.24 --diameter-px 150 --camera-height 1.5
+'''
