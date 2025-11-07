@@ -133,20 +133,36 @@ def pair_images(left_dir, right_dir):
 def compute_epipolar_error(objpoints, imgpoints_left, imgpoints_right, 
                           mtx_left, dist_left, mtx_right, dist_right,
                           R1, R2, P1, P2):
-    """计算校正后的平均极线误差 (像素)"""
+    """
+    计算校正后的平均极线误差 (像素)
+    
+    极线误差计算原理：
+    1. 立体校正后，左右图像中的对应点应该位于同一水平线上（y坐标相同）
+    2. 对每个标定图像对：
+       - 将左图角点投影到校正后的坐标系
+       - 将右图对应角点投影到校正后的坐标系
+       - 计算对应点y坐标的差值：error = |y_left - y_right|
+    3. 对所有对应点的y坐标差求平均，得到平均极线误差
+    
+    误差越小越好：
+    - < 0.5像素：优秀，极线对齐完美
+    - 0.5-1.0像素：良好，可用于大多数应用
+    - > 1.0像素：需改进，可能影响立体匹配精度
+    """
     total_error = 0.0
     total_points = 0
     
     for i in range(len(objpoints)):
-        # 校正左图点
+        # 校正左图点：将原始图像坐标转换为校正后的坐标
         pts_left = imgpoints_left[i]
         pts_left_rect = cv2.undistortPoints(pts_left, mtx_left, dist_left, R=R1, P=P1)
         
-        # 校正右图点
+        # 校正右图点：将原始图像坐标转换为校正后的坐标
         pts_right = imgpoints_right[i]
         pts_right_rect = cv2.undistortPoints(pts_right, mtx_right, dist_right, R=R2, P=P2)
         
         # 计算y坐标差 (极线误差)
+        # 理想情况下，校正后对应点的y坐标应该完全相同
         for j in range(len(pts_left_rect)):
             pt_l = pts_left_rect[j, 0]
             pt_r = pts_right_rect[j, 0]
@@ -342,8 +358,8 @@ def stereo_calibration(args):
     print(f"【几何精度】")
     print(f"  左相机 RMS 误差: {ret_left:.4f} 像素 {'✅' if ret_left < 0.5 else '⚠️' if ret_left < 1.0 else '❌'}")
     print(f"  右相机 RMS 误差: {ret_right:.4f} 像素 {'✅' if ret_right < 0.5 else '⚠️' if ret_right < 1.0 else '❌'}")
-    print(f"  立体 RMS 误差: {ret:.4f} 像素 {'✅' if ret < 0.5 else '⚠️' if ret < 1.0 else '❌'}")
-    print(f"  极线误差: {epi_error:.4f} 像素 {'✅ 优秀' if epi_error < 0.5 else '⚠️ 良好' if epi_error < 1.0 else '❌ 需改进'}")
+    print(f"  立体 RMS 误差: {ret:.4f} 像素(0.5以内可接受) {'✅' if ret < 0.5 else '⚠️' if ret < 1.0 else '❌'}")
+    print(f"  极线误差: {epi_error:.4f} 像素(1以内可接受) {'✅ 优秀' if epi_error < 0.5 else '⚠️ 良好' if epi_error < 1.0 else '❌ 需改进'}")
     
     print(f"\n【物理参数】")
     print(f"  基线长度: {baseline:.4f} 米 {'✅ 合理' if 0.05 < baseline < 0.3 else '⚠️ 验证'}")
@@ -434,7 +450,7 @@ def stereo_calibration(args):
         print("⚠️ 标定完成，但质量不足! 建议:")
         print("   - 增加更多图像 (特别是边缘区域)")
         print("   - 检查标定板是否平整")
-        print("   - 调整alpha参数 (当前:{args.alpha})")
+        print(f"   - 调整alpha参数 (当前:{args.alpha})")
     
     return {
         'mtx_left': mtx_left,
