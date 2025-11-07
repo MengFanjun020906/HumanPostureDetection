@@ -298,6 +298,11 @@ def stereo_calibration(args):
     calib_flags = cv2.CALIB_RATIONAL_MODEL | cv2.CALIB_THIN_PRISM_MODEL
     
     # 左相机标定
+    # 单目RMS误差计算原理：
+    # 1. 使用标定得到的相机内参(K)和畸变系数，将3D标定板角点投影回2D图像
+    # 2. 计算投影点与检测到的角点之间的欧氏距离
+    # 3. 对所有点求均方根(RMS)：RMS = sqrt(mean((x_proj - x_detected)^2 + (y_proj - y_detected)^2))
+    # 误差越小越好：<0.5像素=优秀, 0.5-1.0像素=良好, >1.0像素=需改进
     print("\n" + "-"*50)
     print("左相机标定...")
     print("-"*50)
@@ -314,6 +319,12 @@ def stereo_calibration(args):
     print(f"  重投影误差 (RMS): {ret_right:.4f} 像素")
     
     # 立体标定
+    # 立体RMS误差计算原理：
+    # 1. 同时优化左右相机的内参、外参(R, T)和畸变系数
+    # 2. 将3D标定板角点分别投影到左右图像
+    # 3. 计算左右图像投影点与检测角点的误差，并考虑立体几何约束
+    # 4. 对所有点求均方根，得到立体RMS误差
+    # 误差越小越好：<0.5像素=优秀, 0.5-1.0像素=良好, >1.0像素=需改进
     print("\n" + "-"*50)
     print("立体标定...")
     print("-"*50)
