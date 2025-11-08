@@ -13,7 +13,7 @@
 使用说明:
 1. 准备两个相机从不同角度拍摄的同一场景图像
 2. 图像命名: cam1_001.jpg, cam2_001.jpg (或使用目录结构)
-3. 运行: python sfm_two_cameras.py --cam1 cam1_images --cam2 cam2_images
+3. 运行: python sfm_two_cameras.py --cam1 cam1_images --cam2 cam2_images是不使用已知3D点的示例做重建
 4. 输出: 3D点云、相机姿态、可视化结果
 """
 
