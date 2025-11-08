@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-双目摄像头标定工具 - 专业优化版
+双目摄像头标定工具
+双目摄像头标定要满足视场覆盖区域到达一定值
 ================================================
 特点:
 - 鲁棒图像配对 (基于文件名序号)
@@ -349,19 +350,41 @@ def stereo_calibration(args):
     print("\n" + "-"*50)
     print("立体标定...")
     print("-"*50)
-    
-    # 尝试不同的标定策略
-    # 如果单目误差小但立体误差大，可能是图像配对或几何约束问题
+    # ret: 重投影误差（值越小表示标定精度越高）
+    # mtx_left: 优化后的左相机内参矩阵 [3, 3]
+    # dist_left: 优化后的左相机畸变系数 [1, 5] 或 [1, 8]
+    # mtx_right: 优化后的右相机内参矩阵 [3, 3]
+    # dist_right: 优化后的右相机畸变系数 [1, 5] 或 [1, 8]
+    # R: 右相机相对于左相机的旋转矩阵 [3, 3]
+    # T: 右相机相对于左相机的平移向量 [3, 1]
+    # E: 本质矩阵（描述两个相机之间的几何关系）[3, 3]
+    # F: 基础矩阵（描述两个图像平面之间的几何关系）[3, 3]
     stereo_flags = cv2.CALIB_FIX_INTRINSIC | cv2.CALIB_USE_INTRINSIC_GUESS
     
     # 如果误差很大，尝试不固定内参（但通常不建议）
     # stereo_flags = cv2.CALIB_USE_INTRINSIC_GUESS
     
     ret, mtx_left, dist_left, mtx_right, dist_right, R, T, E, F = cv2.stereoCalibrate(
-        objpoints, imgpoints_left, imgpoints_right,
-        mtx_left, dist_left, mtx_right, dist_right,
-        (w, h), flags=stereo_flags,
-        criteria=(cv2.TERM_CRITERIA_MAX_ITER + cv2.TERM_CRITERIA_EPS, 100, 1e-5)
+        objpoints,          # 输入参数1: 3D世界坐标系中的棋盘格角点 [N, 1, 3]
+                            # N为图像对数，每个元素是形状为[M, 1, 3]的数组，M为角点数量
+        imgpoints_left,     # 输入参数2: 左相机图像上检测到的2D角点 [N, 1, 2]
+                            # 每个元素对应objpoints中同一索引的3D点在左图像上的投影 
+        imgpoints_right,    # 输入参数3: 右相机图像上检测到的2D角点 [N, 1, 2]
+                            # 每个元素对应objpoints中同一索引的3D点在右图像上的投影
+        mtx_left,           # 输入参数4: 左相机内参矩阵的初始值（通常来自单目标定）[3, 3]
+                            # 包含焦距(fx, fy)、主点坐标(cx, cy)等信息
+        dist_left,          # 输入参数5: 左相机畸变系数的初始值 [1, 5] 或 [1, 8]
+                            # 描述径向和切向畸变
+        mtx_right,          # 输入参数6: 右相机内参矩阵的初始值（通常来自单目标定）[3, 3]
+        dist_right,         # 输入参数7: 右相机畸变系数的初始值 [1, 5] 或 [1, 8]
+        (w, h),             # 输入参数8: 图像尺寸 (宽度, 高度)
+        flags=stereo_flags, # 输入参数9: 标定标志位，控制标定过程的行为
+                            # 常用值包括cv2.CALIB_FIX_INTRINSIC（固定内参）
+        criteria=(          # 输入参数10: 迭代终止条件
+            cv2.TERM_CRITERIA_MAX_ITER + cv2.TERM_CRITERIA_EPS,  # 终止条件类型（迭代次数+精度）
+            100,            # 最大迭代次数
+            1e-5            # 精度阈值
+        )
     )
     print(f"  立体重投影误差 (RMS): {ret:.4f} 像素")
     
