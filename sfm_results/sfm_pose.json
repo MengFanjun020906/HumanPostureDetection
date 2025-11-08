@@ -1,5 +1,5 @@
 {
-    "calibration_date": "2025-11-08T23:01:57.770329",
+    "calibration_date": "2025-11-08T23:22:49.465406",
     "camera1_intrinsic": [
         [
             910.2868578425721,
@@ -80,7 +80,8 @@
         "ratio_thresh": 0.6,
         "cross_check": true,
         "ransac_threshold": 0.5,
-        "ransac_confidence": 0.9999
+        "ransac_confidence": 0.9999,
+        "use_pnp": false
     },
     "num_matches": 1665,
     "num_3d_points": 14,

@@ -7,6 +7,7 @@
 - 支持SIFT/SURF/ORB特征检测
 - 自动估计相机相对姿态
 - 三角化重建3D点云
+- 支持PnP算法进行已知3D点的精确重建
 - 可选的Bundle Adjustment优化
 
 使用说明:
@@ -190,6 +191,46 @@ def estimate_relative_pose(K1, K2, kp1, kp2, matches, img1_shape, img2_shape,
     return R, t, points1_inlier, points2_inlier, inliers, pose_quality
 
 
+def estimate_pose_pnp(K, points_2d, points_3d, ransac_threshold=1.0, confidence=0.9999):
+    """
+    使用PnP算法估计相机姿态（已知3D点坐标）
+    
+    参数:
+        K: 相机内参矩阵
+        points_2d: 2D图像点坐标 (Nx2)
+        points_3d: 对应的3D世界点坐标 (Nx3)
+        ransac_threshold: RANSAC阈值（像素）
+        confidence: RANSAC置信度
+    
+    返回:
+        success: 是否成功估计姿态
+        rvec: 旋转向量
+        tvec: 平移向量
+        inliers: 内点掩码
+    """
+    if len(points_2d) < 4 or len(points_3d) < 4:
+        return False, None, None, None
+    
+    # 使用solvePnPRansac进行姿态估计
+    success, rvec, tvec, inliers = cv2.solvePnPRansac(
+        points_3d.astype(np.float32),
+        points_2d.astype(np.float32),
+        K.astype(np.float32),
+        None,  # 畸变系数
+        reprojectionError=ransac_threshold,
+        confidence=confidence,
+        flags=cv2.SOLVEPNP_ITERATIVE
+    )
+    
+    if not success:
+        return False, None, None, None
+    
+    # 将旋转向量转换为旋转矩阵
+    R, _ = cv2.Rodrigues(rvec)
+    
+    return True, R, tvec, inliers
+
+
 def triangulate_points(K1, K2, R, t, points1, points2):
     """
     三角化重建3D点
@@ -217,7 +258,8 @@ def triangulate_points(K1, K2, R, t, points1, points2):
 
 def sfm_two_cameras(cam1_dir, cam2_dir, K1=None, K2=None, output_dir='sfm_results', 
                     detector_type='SIFT', min_matches=50, ratio_thresh=0.75,
-                    ransac_threshold=1.0, ransac_confidence=0.9999, cross_check=False):
+                    ransac_threshold=1.0, ransac_confidence=0.9999, cross_check=False,
+                    points_3d_file=None, use_pnp=False):
     """
     双机位SFM主函数
     
@@ -228,6 +270,8 @@ def sfm_two_cameras(cam1_dir, cam2_dir, K1=None, K2=None, output_dir='sfm_result
         output_dir: 输出目录
         detector_type: 特征检测器类型
         min_matches: 最小匹配点数
+        points_3d_file: 已知3D点坐标文件路径 (JSON格式)
+        use_pnp: 是否使用PnP算法进行姿态估计
     """
     print("="*60)
     print("双机位SFM重建工具")
@@ -357,20 +401,77 @@ def sfm_two_cameras(cam1_dir, cam2_dir, K1=None, K2=None, output_dir='sfm_result
     elif match_quality['match_ratio'] > 0.1:
         print("  ✓ 匹配率良好")
     
-    # 估计相对姿态
-    print(f"\n估计相机相对姿态...")
-    print(f"RANSAC参数: threshold={ransac_threshold}px, confidence={ransac_confidence}")
-    R, t, points1, points2, inliers, pose_quality = estimate_relative_pose(
-        K1, K2, kp1, kp2, good_matches, (w1, h1), (w2, h2),
-        ransac_threshold=ransac_threshold, 
-        confidence=ransac_confidence)
-    
-    if R is None or pose_quality is None:
-        print("❌ 无法估计相对姿态")
-        print("   建议:")
-        print("   - 增加匹配点数量")
-        print("   - 降低ransac_threshold (如0.5) 获得更严格过滤")
-        return None
+    # 如果提供了已知3D点且启用PnP算法
+    if points_3d_file and use_pnp:
+        print(f"\n使用PnP算法进行姿态估计...")
+        print(f"加载已知3D点: {points_3d_file}")
+        
+        # 加载已知3D点
+        try:
+            with open(points_3d_file, 'r') as f:
+                points_3d_data = json.load(f)
+                points_3d_world = np.array(points_3d_data['points_3d'])  # Nx3
+                points_2d_cam1 = np.array(points_3d_data['points_2d_cam1'])  # Nx2
+                points_2d_cam2 = np.array(points_3d_data['points_2d_cam2'])  # Nx2
+        except Exception as e:
+            print(f"❌ 无法加载3D点文件: {e}")
+            return None
+        
+        print(f"  加载 {len(points_3d_world)} 个已知3D点")
+        
+        # 为每个相机估计姿态
+        print("  估计相机1姿态...")
+        success1, R1, t1, inliers1 = estimate_pose_pnp(
+            K1, points_2d_cam1, points_3d_world,
+            ransac_threshold=ransac_threshold,
+            confidence=ransac_confidence
+        )
+        
+        print("  估计相机2姿态...")
+        success2, R2, t2, inliers2 = estimate_pose_pnp(
+            K2, points_2d_cam2, points_3d_world,
+            ransac_threshold=ransac_threshold,
+            confidence=ransac_confidence
+        )
+        
+        if not success1 or not success2:
+            print("❌ PnP姿态估计失败")
+            return None
+        
+        # 计算相对姿态 (从相机1到相机2)
+        R = R2 @ R1.T
+        t = t2 - R @ t1
+        
+        # 提取用于姿态估计的匹配点
+        points1 = points_2d_cam1.reshape(-1, 1, 2)
+        points2 = points_2d_cam2.reshape(-1, 1, 2)
+        inliers = np.ones(len(points1), dtype=bool)  # 假设所有点都是内点
+        
+        # 创建姿态质量信息
+        pose_quality = {
+            'num_inliers': len(points1),
+            'inlier_ratio': 1.0,
+            'num_outliers': 0,
+            'ransac_threshold': ransac_threshold,
+            'confidence': ransac_confidence
+        }
+        
+        print("✓ PnP姿态估计完成")
+    else:
+        # 使用原始的双目SFM方法
+        print(f"\n估计相机相对姿态...")
+        print(f"RANSAC参数: threshold={ransac_threshold}px, confidence={ransac_confidence}")
+        R, t, points1, points2, inliers, pose_quality = estimate_relative_pose(
+            K1, K2, kp1, kp2, good_matches, (w1, h1), (w2, h2),
+            ransac_threshold=ransac_threshold, 
+            confidence=ransac_confidence)
+        
+        if R is None or pose_quality is None:
+            print("❌ 无法估计相对姿态")
+            print("   建议:")
+            print("   - 增加匹配点数量")
+            print("   - 降低ransac_threshold (如0.5) 获得更严格过滤")
+            return None
     
     # 显示姿态估计质量
     print(f"\n【姿态估计质量】")
@@ -417,7 +518,8 @@ def sfm_two_cameras(cam1_dir, cam2_dir, K1=None, K2=None, output_dir='sfm_result
             'ratio_thresh': ratio_thresh,
             'cross_check': cross_check,
             'ransac_threshold': ransac_threshold,
-            'ransac_confidence': ransac_confidence
+            'ransac_confidence': ransac_confidence,
+            'use_pnp': use_pnp
         },
         'num_matches': len(good_matches),
         'num_3d_points': len(points_3d_valid),
@@ -532,6 +634,9 @@ if __name__ == "__main__":
                        help='启用交叉验证（更严格但更准确，速度较慢）')
     parser.add_argument('--K1', help='相机1内参矩阵 (JSON格式或标定文件路径)')
     parser.add_argument('--K2', help='相机2内参矩阵 (JSON格式或标定文件路径)')
+    parser.add_argument('--points-3d-file', help='已知3D点坐标文件路径 (JSON格式)')
+    parser.add_argument('--use-pnp', action='store_true',
+                       help='使用PnP算法进行姿态估计（需要提供已知3D点）')
     
     args = parser.parse_args()
     
@@ -566,7 +671,9 @@ if __name__ == "__main__":
         ratio_thresh=args.ratio_thresh,
         ransac_threshold=args.ransac_threshold,
         ransac_confidence=args.ransac_confidence,
-        cross_check=args.cross_check
+        cross_check=args.cross_check,
+        points_3d_file=args.points_3d_file,
+        use_pnp=args.use_pnp
     )
     
     if result:
@@ -575,7 +682,11 @@ if __name__ == "__main__":
         print("="*60)
 
 '''
+无已知3D点的示例:
 python sfm_two_cameras.py --cam1 .\cam1_images\ --cam2 .\cam2_images\ --ratio-thresh 0.6 --ransac-threshold 0.5 --cross-check
 --ratio-thresh 越低越严格
 --ransac-threshold 越低越严格
+
+使用PnP算法的示例：
+python sfm_two_cameras.py --cam1 .\cam1_images\ --cam2 .\cam2_images\ --use-pnp --points-3d-file .\known_points.json
 '''
