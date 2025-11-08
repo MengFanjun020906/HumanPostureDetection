@@ -325,10 +325,38 @@ def stereo_calibration(args):
     # 3. 计算左右图像投影点与检测角点的误差，并考虑立体几何约束
     # 4. 对所有点求均方根，得到立体RMS误差
     # 误差越小越好：<0.5像素=优秀, 0.5-1.0像素=良好, >1.0像素=需改进
+    
+    # 诊断：检查左右图像角点位置差异
+    print("\n" + "-"*50)
+    print("诊断：检查左右图像角点位置...")
+    print("-"*50)
+    if len(objpoints) > 0:
+        # 计算第一对图像中角点的平均位置
+        left_center = np.mean(imgpoints_left[0], axis=0)[0]
+        right_center = np.mean(imgpoints_right[0], axis=0)[0]
+        center_diff = np.abs(left_center - right_center)
+        print(f"  第一对图像角点中心位置:")
+        print(f"    左图: ({left_center[0]:.1f}, {left_center[1]:.1f})")
+        print(f"    右图: ({right_center[0]:.1f}, {right_center[1]:.1f})")
+        print(f"    位置差异: ({center_diff[0]:.1f}, {center_diff[1]:.1f}) 像素")
+        
+        # 检查角点数量是否一致
+        for i in range(min(3, len(objpoints))):
+            if len(imgpoints_left[i]) != len(imgpoints_right[i]):
+                print(f"  ⚠️ 警告: 第{i+1}对图像角点数量不一致!")
+                print(f"    左图: {len(imgpoints_left[i])} 个, 右图: {len(imgpoints_right[i])} 个")
+    
     print("\n" + "-"*50)
     print("立体标定...")
     print("-"*50)
+    
+    # 尝试不同的标定策略
+    # 如果单目误差小但立体误差大，可能是图像配对或几何约束问题
     stereo_flags = cv2.CALIB_FIX_INTRINSIC | cv2.CALIB_USE_INTRINSIC_GUESS
+    
+    # 如果误差很大，尝试不固定内参（但通常不建议）
+    # stereo_flags = cv2.CALIB_USE_INTRINSIC_GUESS
+    
     ret, mtx_left, dist_left, mtx_right, dist_right, R, T, E, F = cv2.stereoCalibrate(
         objpoints, imgpoints_left, imgpoints_right,
         mtx_left, dist_left, mtx_right, dist_right,
@@ -336,6 +364,23 @@ def stereo_calibration(args):
         criteria=(cv2.TERM_CRITERIA_MAX_ITER + cv2.TERM_CRITERIA_EPS, 100, 1e-5)
     )
     print(f"  立体重投影误差 (RMS): {ret:.4f} 像素")
+    
+    # 诊断：检查立体标定结果
+    baseline = np.linalg.norm(T)
+    print(f"\n  诊断信息:")
+    print(f"    基线长度: {baseline:.4f} 米")
+    if baseline < 0.01:
+        print(f"    ❌ 基线过短! 可能左右图像未正确配对或相机位置异常")
+    elif baseline > 1.0:
+        print(f"    ⚠️ 基线过长! 可能图像配对错误")
+    else:
+        print(f"    ✓ 基线长度合理")
+    
+    # 检查旋转矩阵
+    rotation_angle = np.linalg.norm(cv2.Rodrigues(R)[0]) * 180 / np.pi
+    print(f"    旋转角度: {rotation_angle:.2f} 度")
+    if rotation_angle > 45:
+        print(f"    ⚠️ 旋转角度较大，可能左右相机未对齐")
     
     # 立体校正
     print("\n" + "-"*50)
@@ -377,6 +422,32 @@ def stereo_calibration(args):
     print(f"  左焦距: {mtx_left[0,0]:.1f} 像素, 右焦距: {mtx_right[0,0]:.1f} 像素 (差异: {abs(mtx_left[0,0]-mtx_right[0,0])/fx_avg:.1%})")
     print(f"  有效深度范围: {min_depth:.2f}m - {max_depth:.2f}m")
     print(f"  篮球绕杆适用性: {'✅ 适用' if (1.0 < min_depth < 2.0 and max_depth > 3.0) else '⚠️ 部分适用' if max_depth > 2.5 else '❌ 不适用'}")
+    
+    # 如果误差很大，提供诊断建议
+    if ret > 1.0 or epi_error > 1.0:
+        print(f"\n【问题诊断与建议】")
+        print(f"  单目误差正常但立体误差大，可能原因:")
+        print(f"  1. 图像配对问题:")
+        print(f"     - 检查左右图像是否真正同步采集（时间戳匹配）")
+        print(f"     - 确认文件名序号正确对应（如 left_001.jpg ↔ right_001.jpg）")
+        print(f"     - 验证标定板在左右图像中的位置是否对应")
+        print(f"  2. 标定板姿态问题:")
+        print(f"     - 确保标定板在左右图像中可见且完整")
+        print(f"     - 标定板在左右图像中的角度差异不应过大")
+        print(f"     - 建议标定板覆盖图像的不同区域（中心、边缘、倾斜）")
+        print(f"  3. 相机设置问题:")
+        print(f"     - 确认左右相机分辨率一致")
+        print(f"     - 检查左右相机是否固定（不能移动）")
+        print(f"     - 验证左右相机视野有重叠区域")
+        print(f"  4. 图像质量问题:")
+        print(f"     - 增加标定图像数量（建议至少15-20对）")
+        print(f"     - 确保图像清晰，无模糊、过曝")
+        print(f"     - 检查是否有图像对检测失败（角点数量不一致）")
+        print(f"  5. 尝试解决方案:")
+        print(f"     - 重新采集图像，确保严格同步")
+        print(f"     - 检查并删除配对错误的图像对")
+        print(f"     - 增加标定图像数量，覆盖更多姿态")
+        print(f"     - 如果基线异常，检查相机物理位置")
     
     print(f"\n【有效区域】")
     print(f"  左相机有效区域: {validPixROI1}")
@@ -582,6 +653,7 @@ def test_rectification(calib_data, test_left, test_right, output_dir):
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
+    # 左右摄像头标定命令 python .\camera_calibrator_double.py --left left --right right
     args = parse_args()
     
     # 运行标定
