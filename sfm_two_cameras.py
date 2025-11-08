@@ -77,6 +77,9 @@ def detect_and_match_features(img1, img2, detector_type='SIFT', ratio_thresh=0.7
     if des1 is None or des2 is None or len(des1) < 4 or len(des2) < 4:
         return None, None, None, None, None
     
+    # 初始化match_distances变量
+    match_distances = []
+    
     # 匹配特征点
     if cross_check and detector_type != 'ORB':
         # 交叉验证：双向匹配
@@ -87,6 +90,8 @@ def detect_and_match_features(img1, img2, detector_type='SIFT', ratio_thresh=0.7
                        if any(m1.queryIdx == m2.trainIdx and m1.trainIdx == m2.queryIdx 
                              for m2 in matches2)]
         matches = matches1
+        # 收集匹配距离用于质量评估
+        match_distances = [m.distance for m in good_matches]
     else:
         # KNN匹配
         matches = matcher.knnMatch(des1, des2, k=2)
@@ -571,4 +576,6 @@ if __name__ == "__main__":
 
 '''
 python sfm_two_cameras.py --cam1 .\cam1_images\ --cam2 .\cam2_images\ --ratio-thresh 0.6 --ransac-threshold 0.5 --cross-check
+--ratio-thresh 越低越严格
+--ransac-threshold 越低越严格
 '''
