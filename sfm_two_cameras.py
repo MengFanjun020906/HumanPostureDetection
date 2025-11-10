@@ -13,7 +13,7 @@
 使用说明:
 1. 准备两个相机从不同角度拍摄的同一场景图像
 2. 图像命名: cam1_001.jpg, cam2_001.jpg (或使用目录结构)
-3. 运行: python sfm_two_cameras.py --cam1 cam1_images --cam2 cam2_images是不使用已知3D点的示例做重建
+3. 运行: python sfm_two_cameras.py --cam1 cam1_images --cam2 cam2_images是不使用已知3D点的示例做
 4. 输出: 3D点云、相机姿态、可视化结果
 """
 
@@ -191,12 +191,13 @@ def estimate_relative_pose(K1, K2, kp1, kp2, matches, img1_shape, img2_shape,
     return R, t, points1_inlier, points2_inlier, inliers, pose_quality
 
 
-def estimate_pose_pnp(K, points_2d, points_3d, ransac_threshold=1.0, confidence=0.9999):
+def estimate_pose_pnp(K, dist_coeffs, points_2d, points_3d, ransac_threshold=1.0, confidence=0.9999):
     """
     使用PnP算法估计相机姿态（已知3D点坐标）
     
     参数:
         K: 相机内参矩阵
+        dist_coeffs: 畸变系数向量
         points_2d: 2D图像点坐标 (Nx2)
         points_3d: 对应的3D世界点坐标 (Nx3)
         ransac_threshold: RANSAC阈值（像素）
@@ -216,7 +217,7 @@ def estimate_pose_pnp(K, points_2d, points_3d, ransac_threshold=1.0, confidence=
         points_3d.astype(np.float32),
         points_2d.astype(np.float32),
         K.astype(np.float32),
-        None,  # 畸变系数
+        dist_coeffs,  # 畸变系数
         reprojectionError=ransac_threshold,
         confidence=confidence,
         flags=cv2.SOLVEPNP_ITERATIVE
@@ -256,10 +257,30 @@ def triangulate_points(K1, K2, R, t, points1, points2):
     return points_3d.T
 
 
-def sfm_two_cameras(cam1_dir, cam2_dir, K1=None, K2=None, output_dir='sfm_results', 
+def undistort_image(img, K, dist_coeffs):
+    """
+    对图像进行去畸变处理
+    
+    参数:
+        img: 输入图像
+        K: 相机内参矩阵
+        dist_coeffs: 畸变系数向量
+    
+    返回:
+        undistorted_img: 去畸变后的图像
+    """
+    if dist_coeffs is None:
+        return img
+    
+    # 使用OpenCV的undistort函数进行去畸变
+    undistorted_img = cv2.undistort(img, K, dist_coeffs)
+    return undistorted_img
+
+
+def sfm_two_cameras(cam1_dir, cam2_dir, K1=None, K2=None, dist1=None, dist2=None, output_dir='sfm_results', 
                     detector_type='SIFT', min_matches=50, ratio_thresh=0.75,
                     ransac_threshold=1.0, ransac_confidence=0.9999, cross_check=False,
-                    points_3d_file=None, use_pnp=False):
+                    points_3d_file=None, use_pnp=False, undistort_images=False):
     """
     双机位SFM主函数
     
@@ -267,11 +288,13 @@ def sfm_two_cameras(cam1_dir, cam2_dir, K1=None, K2=None, output_dir='sfm_result
         cam1_dir: 相机1图像目录
         cam2_dir: 相机2图像目录
         K1, K2: 相机内参矩阵 (如果已知，否则需要先标定)
+        dist1, dist2: 相机畸变系数 (如果已知，否则需要先标定)
         output_dir: 输出目录
         detector_type: 特征检测器类型
         min_matches: 最小匹配点数
         points_3d_file: 已知3D点坐标文件路径 (JSON格式)
         use_pnp: 是否使用PnP算法进行姿态估计
+        undistort_images: 是否对图像进行去畸变处理
     """
     print("="*60)
     print("双机位SFM重建工具")
@@ -304,9 +327,12 @@ def sfm_two_cameras(cam1_dir, cam2_dir, K1=None, K2=None, output_dir='sfm_result
                 if fs.isOpened():
                     K1 = fs.getNode('cameraMatrix1').mat()
                     K2 = fs.getNode('cameraMatrix2').mat()
+                    # 加载畸变系数
+                    dist1 = fs.getNode('distCoeffs1').mat()
+                    dist2 = fs.getNode('distCoeffs2').mat()
                     fs.release()
                     if K1 is not None and K2 is not None:
-                        print(f"✓ 从 {xml_file} 加载双目内参")
+                        print(f"✓ 从 {xml_file} 加载双目内参和畸变系数")
             except Exception as e:
                 print(f"  ⚠️ 无法从XML加载: {e}")
         
@@ -318,7 +344,10 @@ def sfm_two_cameras(cam1_dir, cam2_dir, K1=None, K2=None, output_dir='sfm_result
                     with open(calib_file1, 'r') as f:
                         calib = json.load(f)
                         K1 = np.array(calib['camera_matrix'])
-                        print(f"✓ 从 {calib_file1} 加载相机1内参")
+                        # 加载畸变系数
+                        if 'distortion_coefficients' in calib:
+                            dist1 = np.array(calib['distortion_coefficients'])
+                        print(f"✓ 从 {calib_file1} 加载相机1内参和畸变系数")
                 except Exception as e:
                     print(f"  ⚠️ 无法从JSON加载: {e}")
         
@@ -353,6 +382,11 @@ def sfm_two_cameras(cam1_dir, cam2_dir, K1=None, K2=None, output_dir='sfm_result
     print(f"  相机1 K:\n{K1}")
     print(f"  相机2 K:\n{K2}")
     
+    if dist1 is not None:
+        print(f"  相机1 畸变系数: {dist1}")
+    if dist2 is not None:
+        print(f"  相机2 畸变系数: {dist2}")
+    
     # 处理第一对图像
     img1 = cv2.imread(cam1_files[0])
     img2 = cv2.imread(cam2_files[0])
@@ -364,6 +398,16 @@ def sfm_two_cameras(cam1_dir, cam2_dir, K1=None, K2=None, output_dir='sfm_result
     h2, w2 = img2.shape[:2]
     
     print(f"\n图像尺寸: 相机1={w1}x{h1}, 相机2={w2}x{h2}")
+    
+    # 如果启用去畸变，对图像进行处理
+    if undistort_images and (dist1 is not None or dist2 is not None):
+        print(f"\n对图像进行去畸变处理...")
+        if dist1 is not None:
+            img1 = undistort_image(img1, K1, dist1)
+            print("  ✓ 相机1图像已去畸变")
+        if dist2 is not None:
+            img2 = undistort_image(img2, K2, dist2)
+            print("  ✓ 相机2图像已去畸变")
     
     # 检测和匹配特征点
     print(f"\n检测特征点 ({detector_type})...")
@@ -422,14 +466,14 @@ def sfm_two_cameras(cam1_dir, cam2_dir, K1=None, K2=None, output_dir='sfm_result
         # 为每个相机估计姿态
         print("  估计相机1姿态...")
         success1, R1, t1, inliers1 = estimate_pose_pnp(
-            K1, points_2d_cam1, points_3d_world,
+            K1, dist1, points_2d_cam1, points_3d_world,
             ransac_threshold=ransac_threshold,
             confidence=ransac_confidence
         )
         
         print("  估计相机2姿态...")
         success2, R2, t2, inliers2 = estimate_pose_pnp(
-            K2, points_2d_cam2, points_3d_world,
+            K2, dist2, points_2d_cam2, points_3d_world,
             ransac_threshold=ransac_threshold,
             confidence=ransac_confidence
         )
@@ -519,7 +563,8 @@ def sfm_two_cameras(cam1_dir, cam2_dir, K1=None, K2=None, output_dir='sfm_result
             'cross_check': cross_check,
             'ransac_threshold': ransac_threshold,
             'ransac_confidence': ransac_confidence,
-            'use_pnp': use_pnp
+            'use_pnp': use_pnp,
+            'undistort_images': undistort_images
         },
         'num_matches': len(good_matches),
         'num_3d_points': len(points_3d_valid),
@@ -562,57 +607,50 @@ def sfm_two_cameras(cam1_dir, cam2_dir, K1=None, K2=None, output_dir='sfm_result
     }
 
 
-def visualize_sfm_results(img1, img2, kp1, kp2, matches, inliers, 
-                         points_3d, R, t, output_dir):
-    """可视化SFM结果"""
-    # 绘制匹配点 - 单独保存为一张图片
-    img_matches = cv2.drawMatches(img1, kp1, img2, kp2, matches, None,
-                                 matchesMask=inliers.astype(np.uint8),
-                                 flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+def visualize_sfm_results(img1, img2, kp1, kp2, matches, inliers, points_3d, R, t, output_dir):
+    """
+    可视化SFM结果
     
-    # 添加文本标注
-    num_inliers = np.sum(inliers)
-    num_total = len(matches)
-    cv2.putText(img_matches, f'Feature Matches: {num_inliers}/{num_total} inliers', 
-               (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    参数:
+        img1, img2: 输入图像
+        kp1, kp2: 关键点
+        matches: 匹配点对
+        inliers: 内点掩码
+        points_3d: 3D点
+        R, t: 相机相对姿态
+        output_dir: 输出目录
+    """
+    # 绘制特征匹配图
+    if len(matches) > 0:
+        # 只绘制内点匹配
+        inlier_matches = [m for i, m in enumerate(matches) if inliers[i]] if len(inliers) == len(matches) else matches[:50]
+        
+        # 绘制匹配结果
+        match_img = cv2.drawMatches(img1, kp1, img2, kp2, inlier_matches[:50], None, 
+                                   flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+        
+        # 保存匹配图
+        cv2.imwrite(os.path.join(output_dir, 'feature_matches.jpg'), match_img)
     
-    # 保存匹配点可视化（单独图片）
-    match_path = os.path.join(output_dir, 'feature_matches.jpg')
-    cv2.imwrite(match_path, img_matches)
-    print(f"  ✓ 特征匹配图已保存: {match_path}")
-    
-    # 3D点云和深度分布可视化（单独保存）
-    fig = plt.figure(figsize=(12, 5))
-    
-    # 3D点云
-    ax1 = fig.add_subplot(121, projection='3d')
-    ax1.scatter(points_3d[:, 0], points_3d[:, 1], points_3d[:, 2], 
-               c=points_3d[:, 2], cmap='viridis', s=1, alpha=0.6)
-    ax1.set_xlabel('X (m)')
-    ax1.set_ylabel('Y (m)')
-    ax1.set_zlabel('Z (m)')
-    ax1.set_title('重建的3D点云')
-    
-    # 相机位置
-    ax1.scatter(0, 0, 0, c='red', s=100, marker='o', label='相机1')
-    camera2_pos = -R.T @ t
-    ax1.scatter(camera2_pos[0], camera2_pos[1], camera2_pos[2], 
-               c='blue', s=100, marker='^', label='相机2')
-    ax1.legend()
-    
-    # 深度分布
-    ax2 = fig.add_subplot(122)
-    ax2.hist(points_3d[:, 2], bins=50, edgecolor='black')
-    ax2.set_xlabel('深度 (m)')
-    ax2.set_ylabel('点数')
-    ax2.set_title('深度分布')
-    ax2.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'sfm_3d_visualization.png'), dpi=150)
-    plt.close()
-    
-    print(f"  ✓ 3D可视化已保存: sfm_3d_visualization.png")
+    # 绘制3D点云
+    if len(points_3d) > 0:
+        fig = plt.figure(figsize=(10, 8))
+        ax = fig.add_subplot(111, projection='3d')
+        
+        # 绘制3D点
+        ax.scatter(points_3d[:, 0], points_3d[:, 1], points_3d[:, 2], 
+                  c=points_3d[:, 2], cmap='viridis', s=1)
+        
+        # 设置坐标轴
+        ax.set_xlabel('X (m)')
+        ax.set_ylabel('Y (m)')
+        ax.set_zlabel('Z (m)')
+        ax.set_title('3D点云重建结果')
+        
+        # 保存3D可视化图
+        plt.savefig(os.path.join(output_dir, 'sfm_3d_visualization.png'), 
+                   dpi=300, bbox_inches='tight')
+        plt.close()
 
 
 if __name__ == "__main__":
@@ -637,6 +675,8 @@ if __name__ == "__main__":
     parser.add_argument('--points-3d-file', help='已知3D点坐标文件路径 (JSON格式)')
     parser.add_argument('--use-pnp', action='store_true',
                        help='使用PnP算法进行姿态估计（需要提供已知3D点）')
+    parser.add_argument('--undistort-images', action='store_true',
+                       help='对图像进行去畸变处理')
     
     args = parser.parse_args()
     
@@ -673,7 +713,8 @@ if __name__ == "__main__":
         ransac_confidence=args.ransac_confidence,
         cross_check=args.cross_check,
         points_3d_file=args.points_3d_file,
-        use_pnp=args.use_pnp
+        use_pnp=args.use_pnp,
+        undistort_images=args.undistort_images
     )
     
     if result:
@@ -687,6 +728,9 @@ python sfm_two_cameras.py --cam1 .\cam1_images\ --cam2 .\cam2_images\ --ratio-th
 --ratio-thresh 越低越严格
 --ransac-threshold 越低越严格
 
-使用PnP算法的示例：
+使用PnP算法的示例，加载3d对应像素点文件known_points.json：
 python sfm_two_cameras.py --cam1 .\cam1_images\ --cam2 .\cam2_images\ --use-pnp --points-3d-file .\known_points.json
+
+使用去畸变的示例：
+python sfm_two_cameras.py --cam1 .\cam1_images\ --cam2 .\cam2_images\ --undistort-images
 '''
