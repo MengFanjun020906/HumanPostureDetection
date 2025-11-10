@@ -193,7 +193,7 @@ def estimate_relative_pose(K1, K2, kp1, kp2, matches, img1_shape, img2_shape,
 
 def estimate_pose_pnp(K, dist_coeffs, points_2d, points_3d, ransac_threshold=1.0, confidence=0.9999):
     """
-    使用PnP算法估计相机姿态（已知3D点坐标）
+    使用PnP算法估计单相机姿态（已知3D点坐标）
     
     参数:
         K: 相机内参矩阵
@@ -212,15 +212,21 @@ def estimate_pose_pnp(K, dist_coeffs, points_2d, points_3d, ransac_threshold=1.0
     if len(points_2d) < 4 or len(points_3d) < 4:
         return False, None, None, None
     
-    # 使用solvePnPRansac进行姿态估计
+    # 使用solvePnPRansac进行鲁棒姿态估计
+    # 该函数通过RANSAC算法从3D-2D点对应关系中估计相机姿态，具有较强的抗噪性和鲁棒性
+    # 返回值说明:
+    # - success: 姿态估计是否成功
+    # - rvec: 旋转向量 (3x1)，表示相机坐标系相对于世界坐标系的旋转
+    # - tvec: 平移向量 (3x1)，表示相机坐标系原点在世界坐标系中的位置
+    # - inliers: 内点掩码数组，表示哪些点对是有效的（未被RANSAC算法视为异常值）
     success, rvec, tvec, inliers = cv2.solvePnPRansac(
-        points_3d.astype(np.float32),
-        points_2d.astype(np.float32),
-        K.astype(np.float32),
-        dist_coeffs,  # 畸变系数
-        reprojectionError=ransac_threshold,
-        confidence=confidence,
-        flags=cv2.SOLVEPNP_ITERATIVE
+        points_3d.astype(np.float32),  # 3D世界点坐标 (Nx3)，必须转换为float32格式
+        points_2d.astype(np.float32),  # 对应的2D图像点坐标 (Nx2)，必须转换为float32格式
+        K.astype(np.float32),          # 相机内参矩阵 (3x3)，包含焦距和主点信息
+        dist_coeffs,                   # 相机畸变系数向量，用于校正镜头畸变
+        reprojectionError=ransac_threshold,  # RANSAC阈值（像素），决定点对匹配的容差范围
+        confidence=confidence,               # RANSAC置信度，通常设为0.999或更高
+        flags=cv2.SOLVEPNP_ITERATIVE         # PnP算法求解方法，ITERATIVE表示迭代方法
     )
     
     if not success:
