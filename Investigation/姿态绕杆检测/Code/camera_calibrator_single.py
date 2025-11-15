@@ -1,118 +1,21 @@
-#!/usr/bin/env python3
-"""
-相机标定程序 - 支持普通USB相机
-================================================
-使用说明：
-1. 准备一个棋盘格标定板（推荐9x6内角点）
-2. 运行程序采集图像: python camera_calibrator.py --capture
-3. 放置标定板在不同位置/角度（覆盖整个画面）
-4. 按空格键保存图像，按ESC结束采集
-5. 运行标定: python camera_calibrator.py --calibrate
-
-标定结果输出：
-标定完成后，程序会在 'calibration_results' 目录下生成以下文件：
-
-【标定数据文件】（3种格式）
-1. camera_calibration.xml
-   - OpenCV标准格式，可直接用 cv2.FileStorage 读取
-   - 包含：相机内参矩阵(K)、畸变系数、重投影误差、图像尺寸等
-
-2. calibration.json
-   - JSON格式，易于阅读和程序解析
-   - 包含完整的标定信息：标定日期、图像尺寸、棋盘格参数、
-     重投影误差(RMS/平均值)、相机内参矩阵、畸变系数、使用的图像列表等
-
-3. calibration.txt
-   - 简单文本格式，适用于嵌入式系统或快速查看
-   - 包含：标定日期、图像尺寸、重投影误差、相机内参矩阵、畸变系数
-
-【可视化结果文件】（保存在 visualizations/ 子目录）
-1. distortion_correction.jpg
-   - 畸变校正效果对比图（左右对比：原始图像 vs 校正后图像）
-   - 用于直观验证标定效果和畸变校正能力
-
-2. 3d_point_cloud.png
-   - 3D点云分布可视化图
-   - 展示不同标定图像中棋盘格在相机坐标系中的3D位置和姿态分布
-
-【关键参数说明】
-- camera_matrix (K): 3x3相机内参矩阵，包含焦距(fx, fy)和主点坐标(cx, cy)
-  [fx  0  cx]
-  [ 0 fy  cy]
-  [ 0  0   1]
-  
-- distortion_coefficients: 畸变系数数组 (k1, k2, p1, p2, k3, s1, s2, s3, s4)
-  - k1, k2, k3: 径向畸变系数
-  - p1, p2: 切向畸变系数
-  - s1, s2, s3, s4: 薄棱镜畸变系数（如果使用）
-  
-- reprojection_error: 重投影误差（像素单位）
-  - RMS误差: 所有点的重投影误差的均方根值
-  - 平均误差: 所有点的平均重投影误差
-  - 评估标准(rms): <0.5像素=优秀, <1.0像素=良好, >1.0像素=需要重新标定
-
-【文件结构】
-calibration_results/
-├── camera_calibration.xml      # OpenCV标准格式
-├── calibration.json            # JSON格式（易读）
-├── calibration.txt             # 文本格式（简单）
-└── visualizations/
-    ├── distortion_correction.jpg  # 畸变校正对比图
-    └── 3d_point_cloud.png         # 3D点云可视化
-"""
-
-import cv2
-import numpy as np
-import os
-import argparse
-import glob
-import json
-from datetime import datetime
-from pathlib import Path
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-
-# ======================
-# 配置参数 (可自行调整)
-# ======================
-class Config:
-    # 棋盘格参数 (根据你的标定板修改!)
-    CHESSBOARD_SIZE = (9, 6)  # 内角点数量 (宽, 高)
-    SQUARE_SIZE = 0.025       # 棋盘格单格尺寸(米) - 25mm
-    
-    # 采集设置
-    CAPTURE_DIR = "calibration_images"  # 保存图像的目录
-    MIN_IMAGES = 15                    # 最小图像数量
-    MAX_IMAGES = 30                    # 最大图像数量
-    
-    # 质量控制阈值
-    MIN_BLUR_VAR = 100.0      # 拉普拉斯方差阈值 (防模糊)
-    MIN_CONTRAST = 30.0       # 最小对比度
-    MAX_SATURATION = 220.0    # 最大饱和度 (防过曝)
-    
-    # 标定参数
-    CALIB_FLAGS = cv2.CALIB_RATIONAL_MODEL | cv2.CALIB_THIN_PRISM_MODEL | cv2.CALIB_FIX_PRINCIPAL_POINT
-    
-    # 相机设置 (手机用户注意!)
-    CAMERA_ID = 0             # 0=内置摄像头, 1=外接USB, 手机用DroidCam时通常为1
-    RESOLUTION = (1280, 720)  # 设置分辨率 (手机建议720p)
-    FPS = 30                  # 帧率
-
 # ======================
 # 第一部分：图像采集
 # ======================
-def capture_calibration_images():
+def capture_calibration_images(image_dir=None):
     """采集标定图像 - 智能质量控制版"""
+    # 如果提供了image_dir参数，则使用它，否则使用Config中的默认值
+    capture_dir = image_dir if image_dir is not None else Config.CAPTURE_DIR
+    
     print("="*50)
     print("相机标定图像采集工具")
     print("="*50)
     print(f"配置: {Config.CHESSBOARD_SIZE[0]}x{Config.CHESSBOARD_SIZE[1]} 棋盘格, 单格{Config.SQUARE_SIZE*1000:.1f}mm")
-    print(f"保存目录: '{Config.CAPTURE_DIR}'")
+    print(f"保存目录: '{capture_dir}'")
     print(f"按 [空格] 保存图像, [ESC] 结束采集, [D] 删除上一张")
     print("-"*50)
     
     # 创建保存目录
-    os.makedirs(Config.CAPTURE_DIR, exist_ok=True)
+    os.makedirs(capture_dir, exist_ok=True)
     
     # 初始化相机
     cap = cv2.VideoCapture(Config.CAMERA_ID)
@@ -224,7 +127,7 @@ def capture_calibration_images():
             
             # 生成唯一文件名
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            filename = os.path.join(Config.CAPTURE_DIR, f"calib_{timestamp}.jpg")
+            filename = os.path.join(capture_dir, f"calib_{timestamp}.jpg")
             
             # 保存原始图像 (非显示图像)
             cv2.imwrite(filename, frame)
@@ -248,23 +151,27 @@ def capture_calibration_images():
         print("建议: 重新采集，确保标定板覆盖不同位置和角度")
         return False
     
-    print(f"\n成功采集 {len(saved_images)} 张标定图像到 '{Config.CAPTURE_DIR}'")
+    print(f"\n成功采集 {len(saved_images)} 张标定图像到 '{capture_dir}'")
     print("下一步: 运行标定计算: python camera_calibrator.py --calibrate")
     return True
+
 
 # ======================
 # 第二部分：标定计算
 # ======================
-def perform_calibration():
+def perform_calibration(image_dir=None):
     """执行相机标定计算"""
+    # 如果提供了image_dir参数，则使用它，否则使用Config中的默认值
+    capture_dir = image_dir if image_dir is not None else Config.CAPTURE_DIR
+    
     print("="*50)
     print("相机标定计算")
     print("="*50)
     
     # 检查图像是否存在
-    image_files = sorted(glob.glob(os.path.join(Config.CAPTURE_DIR, "*.jpg")))
+    image_files = sorted(glob.glob(os.path.join(capture_dir, "*.jpg")))
     if not image_files:
-        print(f"错误: 在 '{Config.CAPTURE_DIR}' 中未找到图像")
+        print(f"错误: 在 '{capture_dir}' 中未找到图像")
         print("请先运行: python camera_calibrator.py --capture")
         return False
     
@@ -338,24 +245,6 @@ def perform_calibration():
         h, w = cv2.imread(valid_images[0]).shape[:2]
         
         # 执行标定
-        # 执行相机标定
-        # cv2.calibrateCamera 函数参数详解：
-        # 参数1: objpoints - 3D世界坐标系中的点集合，形状为 [n_images, n_points, 3] 的数组
-        #        每个元素表示棋盘格在世界坐标系中的3D坐标，通常Z坐标为0
-        # 参数2: imgpoints - 2D图像坐标系中的点集合，形状为 [n_images, n_points, 2] 的数组
-        #        每个元素表示棋盘格角点在图像中的像素坐标
-        # 参数3: (w, h) - 图像尺寸，即图像的宽度和高度（像素）
-        # 参数4: None - 相机内参矩阵的初始估计值，设为None表示由函数自动计算
-        # 参数5: None - 畸变系数的初始估计值，设为None表示由函数自动计算
-        # 参数6: flags - 标定标志位，Config.CALIB_FLAGS定义了使用的标定模型
-        # 参数7: criteria - 迭代优化的终止条件，格式为(类型, 最大迭代次数, 精度阈值)
-        #
-        # 返回值：
-        # ret - 重投影误差的RMS值（像素），评估标定精度的重要指标
-        # mtx - 相机内参矩阵(K)，3x3矩阵，包含焦距和主点坐标
-        # dist - 畸变系数数组，包含径向畸变和切向畸变系数
-        # rvecs - 旋转向量列表，每个图像对应一个旋转向量
-        # tvecs - 平移向量列表，每个图像对应一个平移向量
         ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(
             objpoints, imgpoints, (w, h),
             None, None,
@@ -397,8 +286,8 @@ def perform_calibration():
         visualize_calibration_results(mtx, dist, valid_images)
         
         return True
-    
-    except cv2.error as e:
+        
+    except Exception as e:
         print(f"标定错误: {e}")
         print("常见原因:")
         print("- 标定板在图像中太小 (<100像素宽)")
@@ -406,145 +295,6 @@ def perform_calibration():
         print("- 所有图像中棋盘格姿态相似")
         return False
 
-def save_calibration_results(mtx, dist, rvecs, tvecs, rms_error, mean_error, image_size, image_files):
-    """保存标定结果到多种格式"""
-    print("\n保存标定结果...")
-    
-    # 创建输出目录
-    output_dir = "calibration_results"
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # 1. OpenCV 标准XML/YAML格式
-    fs = cv2.FileStorage(os.path.join(output_dir, "camera_calibration.xml"), cv2.FILE_STORAGE_WRITE)
-    fs.write("camera_matrix", mtx)
-    fs.write("distortion_coefficients", dist)
-    fs.write("rms_error", rms_error)
-    fs.write("mean_error", mean_error)
-    fs.write("image_width", image_size[0])
-    fs.write("image_height", image_size[1])
-    fs.write("used_images", " ".join([os.path.basename(f) for f in image_files]))
-    fs.release()
-    
-    # 2. JSON格式 (易读)
-    calibration_data = {
-        "calibration_date": datetime.now().isoformat(),
-        "image_size": {"width": image_size[0], "height": image_size[1]},
-        "chessboard": {
-            "size": [Config.CHESSBOARD_SIZE[0], Config.CHESSBOARD_SIZE[1]],
-            "square_size_m": Config.SQUARE_SIZE
-        },
-        "reprojection_error": {
-            "rms": float(rms_error),
-            "mean": float(mean_error)
-        },
-        "camera_matrix": mtx.tolist(),
-        "distortion_coefficients": dist.ravel().tolist(),
-        "used_images_count": len(image_files),
-        "used_images": [os.path.basename(f) for f in image_files]
-    }
-    
-    with open(os.path.join(output_dir, "calibration.json"), 'w') as f:
-        json.dump(calibration_data, f, indent=4)
-    
-    # 3. 简单文本格式 (用于嵌入式系统)
-    with open(os.path.join(output_dir, "calibration.txt"), 'w') as f:
-        f.write(f"Camera Calibration Results\n")
-        f.write(f"Generated: {datetime.now()}\n")
-        f.write(f"Image Size: {image_size[0]}x{image_size[1]}\n")
-        f.write(f"Reprojection Error (RMS): {rms_error:.4f} pixels\n")
-        f.write(f"\nCamera Matrix (K):\n")
-        for row in mtx:
-            f.write(f"  {row[0]:.6f} {row[1]:.6f} {row[2]:.6f}\n")
-        f.write("\nDistortion Coefficients (k1,k2,p1,p2,k3,s1,s2,s3,s4):\n")
-        f.write("  " + " ".join([f"{d:.6f}" for d in dist.ravel()]))
-    
-    print(f"结果已保存到 '{output_dir}':")
-    print(f"  - camera_calibration.xml (OpenCV标准格式)")
-    print(f"  - calibration.json (易读格式)")
-    print(f"  - calibration.txt (简单文本)")
-
-def visualize_calibration_results(mtx, dist, image_files):
-    """可视化标定结果"""
-    print("\n生成可视化结果...")
-    
-    # 1. 畸变校正效果对比
-    print("  生成畸变校正对比图...")
-    sample_img = cv2.imread(image_files[0])
-    h, w = sample_img.shape[:2]
-    
-    # 计算最优新相机矩阵
-    newcameramtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, (w, h), 1, (w, h))
-    
-    # 校正图像
-    dst = cv2.undistort(sample_img, mtx, dist, None, newcameramtx)
-    
-    # 裁剪图像
-    x, y, w_roi, h_roi = roi
-    dst_cropped = dst[y:y+h_roi, x:x+w_roi]
-    
-    # 创建对比图
-    comparison = np.zeros((h, w*2, 3), dtype=np.uint8)
-    comparison[:, :w] = sample_img
-    comparison[:, w:] = cv2.resize(dst_cropped, (w, h))
-    
-    # 添加标注
-    cv2.putText(comparison, "Orignal Image", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-    cv2.putText(comparison, "Distortion Correction Image", (w+50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-    
-    # 保存对比图
-    vis_dir = "calibration_results/visualizations"
-    os.makedirs(vis_dir, exist_ok=True)
-    cv2.imwrite(os.path.join(vis_dir, "distortion_correction.jpg"), comparison)
-    
-    # 2. 3D点云可视化
-    print("  生成3D点云可视化...")
-    fig = plt.figure(figsize=(12, 10))
-    ax = fig.add_subplot(111, projection='3d')
-    
-    # 绘制所有棋盘格
-    colors = plt.cm.jet(np.linspace(0, 1, len(image_files)))
-    for i, fname in enumerate(image_files[:10]):  # 限制数量避免混乱
-        img = cv2.imread(fname)
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        h, w = gray.shape
-        
-        # 获取3D-2D对应
-        objp = np.zeros((Config.CHESSBOARD_SIZE[0] * Config.CHESSBOARD_SIZE[1], 3), np.float32)
-        objp[:, :2] = np.mgrid[0:Config.CHESSBOARD_SIZE[0], 0:Config.CHESSBOARD_SIZE[1]].T.reshape(-1, 2)
-        objp *= Config.SQUARE_SIZE
-        
-        found, corners = cv2.findChessboardCorners(gray, Config.CHESSBOARD_SIZE, None)
-        if not found:
-            continue
-            
-        # 计算外参
-        _, rvec, tvec = cv2.solvePnP(objp, corners, mtx, dist)
-        
-        # 将3D点转换到相机坐标系
-        R, _ = cv2.Rodrigues(rvec)
-        camera_points = (R @ objp.T).T + tvec.T
-        
-        # 绘制
-        ax.scatter(camera_points[:, 0], camera_points[:, 1], camera_points[:, 2], 
-                  c=[colors[i]], s=10, alpha=0.6, label=f'Image {i+1}')
-    
-    # 绘制相机位置 (原点)
-    ax.scatter(0, 0, 0, c='red', s=200, marker='o', label='Camera Position')
-    
-    # 设置坐标轴
-    ax.set_xlabel('X (m)', fontsize=12)
-    ax.set_ylabel('Y (m)', fontsize=12)
-    ax.set_zlabel('Z (m)', fontsize=12)
-    ax.set_title('3D Point Cloud from Calibration Images', fontsize=14)
-    ax.legend(loc='best', fontsize=8)
-    
-    # 保存3D可视化
-    plt.savefig(os.path.join(vis_dir, "3d_point_cloud.png"), dpi=150, bbox_inches='tight')
-    plt.close()
-    
-    print(f"可视化结果已保存到 '{vis_dir}':")
-    print(f"  - distortion_correction.jpg (畸变校正对比)")
-    print(f"  - 3d_point_cloud.png (3D点云分布)")
 
 # ======================
 # 程序入口
@@ -564,39 +314,27 @@ def main():
         print("  --capture    采集标定图像")
         print("  --calibrate  执行标定计算")
         print("  --all        全自动流程 (先采集后标定)")
+        print("  --image-dir  标定照片所在的文件夹路径 (默认: calibration_images)")
         print("\n示例:")
         print("  1. 采集图像: python camera_calibrator.py --capture")
         print("  2. 执行标定: python camera_calibrator.py --calibrate")
         print("  3. 全自动:   python camera_calibrator.py --all")
+        print("  4. 指定目录: python camera_calibrator.py --calibrate --image-dir my_images")
         return
     
     # 全自动流程
     if args.all:
         print("运行全自动标定流程...")
-        if capture_calibration_images():
-            perform_calibration()
+        if capture_calibration_images(args.image_dir):
+            perform_calibration(args.image_dir)
         return
     
     # 仅采集
     if args.capture:
-        capture_calibration_images()
+        capture_calibration_images(args.image_dir)
         return
     
     # 仅标定
     if args.calibrate:
-        perform_calibration()
+        perform_calibration(args.image_dir)
         return
-
-if __name__ == "__main__":
-    # 检查OpenCV版本
-    print(f"OpenCV 版本: {cv2.__version__}")
-    if cv2.__version__ < '4.5':
-        print("警告: 检测到旧版OpenCV (需要4.5+)，某些功能可能受限")
-        print("建议升级: pip install --upgrade opencv-python")
-    
-    main()
-
-'''
-标定：  python camera_calibrator.py --calibrate
-采集：  python camera_calibrator.py --capture
-'''
