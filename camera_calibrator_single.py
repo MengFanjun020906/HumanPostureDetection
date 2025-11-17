@@ -81,7 +81,7 @@ class Config:
     SQUARE_SIZE = 0.025       # 棋盘格单格尺寸(米) - 25mm
     
     # 采集设置
-    CAPTURE_DIR = "calibration_images_tzd"  # 保存图像的目录 (统一使用此目录)
+    CAPTURE_DIR = "calibration_images_sxh"  # 保存图像的目录 (统一使用此目录)
     MIN_IMAGES = 10                    # 最小图像数量
     MAX_IMAGES = 30                    # 最大图像数量
     

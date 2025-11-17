@@ -739,4 +739,7 @@ python sfm_two_cameras.py --cam1 .\cam1_images\ --cam2 .\cam2_images\ --use-pnp 
 
 使用去畸变的示例：
 python sfm_two_cameras.py --cam1 .\cam1_images\ --cam2 .\cam2_images\ --undistort-images
+
+加载相机内参矩阵：
+python sfm_two_cameras.py --cam1 .\calibration_images_sxh\ --cam2 .\calibration_images_tzd\ --K1 calibration_results\calibration_results_sxh\calibration.json --K2 calibration_results\calibration_results_tzd\calibration.json --ratio-thresh 0.2
 '''
