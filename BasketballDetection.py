@@ -6,7 +6,7 @@ import numpy as np
 model = YOLO('yolov8n.pt')  # 或使用专门训练的篮球检测模型
 
 # 视频文件路径
-video_path = 'test_video.mp4'
+video_path = 'test_video2.mp4'
 cap = cv2.VideoCapture(video_path)
 
 # 获取视频属性
