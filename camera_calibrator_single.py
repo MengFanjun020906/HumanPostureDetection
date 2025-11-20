@@ -99,7 +99,70 @@ class Config:
     FPS = 30                  # 帧率
 
 # ======================
-# 辅助函数：保存标定结果
+# 辅助函数：验证定位精度
+# ======================
+def verify_localization_accuracy(mtx, dist, working_distance=1.0, board_size_mm=25.0):
+    """
+    验证1米距离下的实际定位精度
+    
+    参数:
+    mtx, dist: 相机标定参数
+    working_distance: 工作距离(米)
+    board_size_mm: 棋盘格单格物理尺寸(mm)
+    
+    返回:
+    实际定位精度(mm)
+    """
+    print(f"\n验证在{working_distance}米工作距离下的定位精度...")
+    
+    # 1. 创建一个虚拟标定板 (使用与实际标定相同的尺寸)
+    objp = np.zeros((Config.CHESSBOARD_SIZE[0] * Config.CHESSBOARD_SIZE[1], 3), np.float32)
+    objp[:, :2] = np.mgrid[0:Config.CHESSBOARD_SIZE[0], 0:Config.CHESSBOARD_SIZE[1]].T.reshape(-1, 2)
+    objp *= board_size_mm / 1000  # 转为米
+    
+    # 2. 模拟相机在工作距离的位姿
+    rvec = np.array([0, 0, 0], dtype=np.float64)  # 无旋转
+    tvec = np.array([0, 0, working_distance], dtype=np.float64)
+    
+    # 3. 生成理想图像点
+    imgpoints, _ = cv2.projectPoints(objp, rvec, tvec, mtx, dist)
+    
+    # 4. 添加0.5像素误差模拟实际检测误差
+    np.random.seed(42)  # 固定随机种子以保证结果可重复
+    noisy_imgpoints = imgpoints + np.random.normal(0, 0.5, imgpoints.shape)
+    
+    # 5. 反向计算3D点（使用PnP算法模拟定位）
+    success, rvec_calc, tvec_calc = cv2.solvePnP(objp, noisy_imgpoints, mtx, dist)
+    
+    if not success:
+        print("  警告: PnP求解失败，无法计算定位精度")
+        return 0
+    
+    # 6. 计算实际定位误差
+    total_error_mm = 0
+    
+    # 对每个点计算误差
+    for i in range(len(objp)):
+        # 将3D点投影到图像平面
+        projected_point, _ = cv2.projectPoints(objp[i:i+1], rvec_calc, tvec_calc, mtx, dist)
+        
+        # 计算重投影误差
+        reprojection_error = np.linalg.norm(imgpoints[i] - projected_point[0])
+        
+        # 通过重投影误差反推3D空间误差
+        # 这是一个简化的估算，实际误差会因点的位置而异
+        # 使用小角度近似: 误差(米) ≈ 重投影误差(像素) * 工作距离(米) / 焦距(像素)
+        focal_length = (mtx[0, 0] + mtx[1, 1]) / 2  # 平均焦距
+        error_3d_m = reprojection_error * working_distance / focal_length
+        total_error_mm += error_3d_m * 1000  # 转为毫米
+    
+    avg_error_mm = total_error_mm / len(objp)
+    
+    print(f"  在{working_distance}米距离下，0.5像素检测误差对应平均定位精度: {avg_error_mm:.3f} mm")
+    return avg_error_mm
+
+# ======================
+# 辅助函数：保存标定结果 (更新版本)
 # ======================
 def save_calibration_results(mtx, dist, rvecs, tvecs, rms_error, mean_error, image_size, image_files):
     """保存标定结果到多种格式"""
@@ -161,17 +224,17 @@ def save_calibration_results(mtx, dist, rvecs, tvecs, rms_error, mean_error, ima
     return output_dir
 
 # ======================
-# 辅助函数：可视化标定结果
+# 辅助函数：可视化标定结果 (更新版本)
 # ======================
 def visualize_calibration_results(mtx, dist, image_files, output_dir):
-    """可视化标定结果"""
+    """可视化标定结果 - 优化版本"""
     print("\n生成可视化结果...")
     
     # 确保可视化目录存在
     vis_dir = os.path.join(output_dir, "visualizations")
     os.makedirs(vis_dir, exist_ok=True)
     
-    # 1. 畸变校正效果对比
+    # 1. 畸变校正效果对比 (只处理第一张图像以提高速度)
     print("  生成畸变校正对比图...")
     sample_img = cv2.imread(image_files[0])
     if sample_img is None:
@@ -202,71 +265,148 @@ def visualize_calibration_results(mtx, dist, image_files, output_dir):
     # 保存对比图
     cv2.imwrite(os.path.join(vis_dir, "distortion_correction.jpg"), comparison)
     
-    # 2. 3D点云可视化
-    # print("  生成3D点云可视化...")
-    # fig = plt.figure(figsize=(12, 10))
-    # ax = fig.add_subplot(111, projection='3d')
+    # 2. 3D点云可视化 (优化版本 - 只使用前5张图像以提高速度)
+    print("  生成3D点云可视化...")
+    fig = plt.figure(figsize=(12, 10))
+    ax = fig.add_subplot(111, projection='3d')
     
-    # # 准备对象点 (3D点)
-    # objp = np.zeros((Config.CHESSBOARD_SIZE[0] * Config.CHESSBOARD_SIZE[1], 3), np.float32)
-    # objp[:, :2] = np.mgrid[0:Config.CHESSBOARD_SIZE[0], 0:Config.CHESSBOARD_SIZE[1]].T.reshape(-1, 2)
-    # objp *= Config.SQUARE_SIZE  # 转换为物理单位(米)
+    # 准备对象点 (3D点)
+    objp = np.zeros((Config.CHESSBOARD_SIZE[0] * Config.CHESSBOARD_SIZE[1], 3), np.float32)
+    objp[:, :2] = np.mgrid[0:Config.CHESSBOARD_SIZE[0], 0:Config.CHESSBOARD_SIZE[1]].T.reshape(-1, 2)
+    objp *= Config.SQUARE_SIZE  # 转换为物理单位(米)
     
-    # # 为不同图像使用不同颜色
-    # colors = plt.cm.jet(np.linspace(0, 1, min(10, len(image_files))))
+    # 限制处理的图像数量以提高速度 (最多5张)
+    max_visualization_images = min(5, len(image_files))
     
-    # # 绘制所有棋盘格
-    # for i, fname in enumerate(image_files[:10]):  # 限制数量避免混乱
-    #     img = cv2.imread(fname)
-    #     if img is None:
-    #         continue
+    # 为不同图像使用不同颜色
+    colors = plt.cm.jet(np.linspace(0, 1, max_visualization_images))
+    
+    # 绘制棋盘格 (优化版本)
+    successful_processing = 0
+    for i, fname in enumerate(image_files[:max_visualization_images]):
+        print(f"    处理图像 {i+1}/{max_visualization_images}: {os.path.basename(fname)}")
+        
+        # 对于高分辨率图像，使用降采样策略
+        img = cv2.imread(fname)
+        if img is None:
+            continue
             
-    #     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        original_h, original_w = img.shape[:2]
         
-    #     # 检测棋盘格角点
-    #     found, corners = cv2.findChessboardCorners(
-    #         gray, Config.CHESSBOARD_SIZE,
-    #         flags=cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE
-    #     )
-        
-    #     if not found:
-    #         continue
+        # 根据图像大小选择合适的降采样比例 (与标定过程保持一致)
+        if max(original_h, original_w) > 4000:
+            target_size = 1000
+        elif max(original_h, original_w) > 2000:
+            target_size = 1500
+        else:
+            target_size = 2000
             
-    #     # 亚像素级精化
-    #     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-    #     corners_sub = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
+        if max(original_h, original_w) > target_size:
+            scale_factor = target_size / max(original_h, original_w)
+            new_w = int(original_w * scale_factor)
+            new_h = int(original_h * scale_factor)
+            img_scaled = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        else:
+            img_scaled = img
+            scale_factor = 1.0
+            
+        gray = cv2.cvtColor(img_scaled, cv2.COLOR_BGR2GRAY)
         
-    #     # 计算外参
-    #     _, rvec, tvec = cv2.solvePnP(objp, corners_sub, mtx, dist)
+        # 检测棋盘格角点 (带超时机制)
+        import threading
         
-    #     # 将3D点转换到相机坐标系
-    #     R, _ = cv2.Rodrigues(rvec)
-    #     camera_points = (R @ objp.T).T + tvec.T
+        def find_corners_thread(gray, pattern_size, flags, result_dict):
+            try:
+                result_dict['result'] = cv2.findChessboardCorners(
+                    gray, pattern_size, 
+                    flags=cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE
+                )
+                result_dict['success'] = True
+            except Exception as e:
+                result_dict['error'] = str(e)
+                result_dict['success'] = False
+                
+        result_dict = {}
+        thread = threading.Thread(
+            target=find_corners_thread, 
+            args=(gray, Config.CHESSBOARD_SIZE, 
+                  cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE, 
+                  result_dict)
+        )
+        thread.start()
         
-    #     # 绘制
-    #     ax.scatter(camera_points[:, 0], camera_points[:, 1], camera_points[:, 2], 
-    #               c=[colors[i]], s=10, alpha=0.6, label=f'Image {i+1}')
+        # 设置合理的超时时间
+        timeout = 5.0
+        thread.join(timeout=timeout)
+        
+        # 检查线程是否完成
+        if thread.is_alive():
+            print(f"    跳过 {os.path.basename(fname)}: 角点检测超时(>{timeout}秒)")
+            continue
+            
+        if not result_dict.get('success', False):
+            error_msg = result_dict.get('error', '未知错误')
+            print(f"    跳过 {os.path.basename(fname)}: 角点检测出错 - {error_msg}")
+            continue
+            
+        found, corners = result_dict['result']
+        
+        if not found:
+            continue
+            
+        # 亚像素级精化（在降采样图像上进行）
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+        corners_sub = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
+        
+        # 如果图像被缩放了，需要将角点坐标还原到原始图像尺寸
+        if scale_factor != 1.0:
+            corners_original = corners_sub.copy()
+            corners_original[:, :, 0] = corners_sub[:, :, 0] / scale_factor
+            corners_original[:, :, 1] = corners_sub[:, :, 1] / scale_factor
+        else:
+            corners_original = corners_sub
+            
+        # 计算外参
+        try:
+            _, rvec, tvec = cv2.solvePnP(objp, corners_original, mtx, dist)
+        except Exception as e:
+            print(f"    跳过 {os.path.basename(fname)}: 姿态解算失败 - {str(e)}")
+            continue
+        
+        # 将3D点转换到相机坐标系
+        R, _ = cv2.Rodrigues(rvec)
+        camera_points = (R @ objp.T).T + tvec.T
+        
+        # 绘制
+        ax.scatter(camera_points[:, 0], camera_points[:, 1], camera_points[:, 2], 
+                  c=[colors[i]], s=10, alpha=0.6, label=f'Image {i+1}')
+        successful_processing += 1
     
-    # # 绘制相机位置 (原点)
-    # ax.scatter(0, 0, 0, c='red', s=200, marker='o', label='Camera Position')
+    if successful_processing == 0:
+        print("  警告: 所有图像都未能成功处理，跳过3D点云可视化")
+        plt.close()
+        return
+        
+    # 绘制相机位置 (原点)
+    ax.scatter(0, 0, 0, c='red', s=200, marker='o', label='Camera Position')
     
-    # # 设置坐标轴
-    # ax.set_xlabel('X (m)', fontsize=12)
-    # ax.set_ylabel('Y (m)', fontsize=12)
-    # ax.set_zlabel('Z (m)', fontsize=12)
-    # ax.set_title('3D Point Cloud from Calibration Images', fontsize=14)
+    # 设置坐标轴
+    ax.set_xlabel('X (m)', fontsize=12)
+    ax.set_ylabel('Y (m)', fontsize=12)
+    ax.set_zlabel('Z (m)', fontsize=12)
+    ax.set_title('3D Point Cloud from Calibration Images', fontsize=14)
     
-    # # 添加图例（但限制数量避免重叠）
-    # if len(image_files) <= 10:
-    #     ax.legend(loc='best', fontsize=8)
+    # 添加图例（但限制数量避免重叠）
+    if successful_processing <= 5:
+        ax.legend(loc='best', fontsize=8)
     
-    # # 保存3D可视化
-    # plt.savefig(os.path.join(vis_dir, "3d_point_cloud.png"), dpi=150, bbox_inches='tight')
-    # plt.close()
+    # 保存3D可视化
+    plt.savefig(os.path.join(vis_dir, "3d_point_cloud.png"), dpi=150, bbox_inches='tight')
+    plt.close()
     
     print(f"可视化结果已保存到 '{vis_dir}':")
     print(f"  - distortion_correction.jpg (畸变校正对比)")
-    #print(f"  - 3d_point_cloud.png (3D点云分布)")
+    print(f"  - 3d_point_cloud.png (3D点云分布)")
 
 # ======================
 # 第一部分：图像采集
@@ -293,8 +433,7 @@ def capture_calibration_images():
         print("- 手机DroidCam: 通常为1-3, 试不同ID")
         print("- 用手机浏览器访问 http://[手机IP]:4747 作为网络摄像头")
         return False
-    
-    # 设置分辨率 (手机摄像头可能不支持高分辨率)
+# 设置分辨率 (手机摄像头可能不支持高分辨率)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, Config.RESOLUTION[0])
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, Config.RESOLUTION[1])
     cap.set(cv2.CAP_PROP_FPS, Config.FPS)
@@ -425,7 +564,7 @@ def capture_calibration_images():
     return True
 
 # ======================
-# 第二部分：标定计算
+# 第二部分：标定计算 (更新版本)
 # ======================
 def perform_calibration():
     """执行相机标定计算"""
@@ -435,8 +574,8 @@ def perform_calibration():
     
     # 检查图像是否存在 (同时查找.jpg和.JPG文件)
     image_files_jpg = sorted(glob.glob(os.path.join(Config.CAPTURE_DIR, "*.jpg")))
-    #image_files_JPG = sorted(glob.glob(os.path.join(Config.CAPTURE_DIR, "*.JPG")))
-    image_files = image_files_jpg
+    image_files_JPG = sorted(glob.glob(os.path.join(Config.CAPTURE_DIR, "*.JPG")))
+    image_files = image_files_jpg + image_files_JPG
     image_files = sorted(image_files)  # 重新排序
     
     if not image_files:
@@ -651,6 +790,14 @@ def perform_calibration():
         # 保存标定结果
         output_dir = save_calibration_results(mtx, dist, rvecs, tvecs, ret, mean_error, (w, h), valid_images)
         
+        # 验证定位精度
+        print("\n" + "="*50)
+        print("定位精度验证")
+        print("="*50)
+        # 在不同工作距离下验证定位精度
+        for distance in [0.5, 1.0, 1.5, 2.0]:
+            verify_localization_accuracy(mtx, dist, working_distance=distance, board_size_mm=Config.SQUARE_SIZE*1000)
+        
         # 可视化验证
         visualize_calibration_results(mtx, dist, valid_images, output_dir)
         
@@ -685,9 +832,9 @@ def main():
         print("  --calibrate  执行标定计算")
         print("  --all        全自动流程 (先采集后标定)")
         print("\n示例:")
-        print("  1. 采集图像: python camera_calibrator.py --capture")
-        print("  2. 执行标定: python camera_calibrator.py --calibrate")
-        print("  3. 全自动:   python camera_calibrator.py --all")
+        print("  1. 采集图像: python camera_calibrator_single.py --capture")
+        print("  2. 执行标定: python camera_calibrator_single.py --calibrate")
+        print("  3. 全自动:   python camera_calibrator_single.py --all")
         return
 
     # 全自动流程
