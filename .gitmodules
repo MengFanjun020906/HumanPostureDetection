@@ -1,0 +1,3 @@
+[submodule "yolov5"]
+	path = yolov5
+	url = https://github.com/MengFanjun020906/local-yolov5-for-detection.git
