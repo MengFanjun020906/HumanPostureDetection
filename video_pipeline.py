@@ -7,6 +7,9 @@ import os
 
 import numpy as np
 
+'''
+D:/anaconda3/envs/retinaface_env/python.exe video_pipeline.py <video_path> -o <output_path> -d <device> --fps <fps> -c
+'''
 # 确保utils模块在Python路径中
 current_dir = Path(__file__).parent
 sys.path.append(str(current_dir))
