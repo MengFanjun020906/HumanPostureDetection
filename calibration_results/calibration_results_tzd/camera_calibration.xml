@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<opencv_storage>
+<camera_matrix type_id="opencv-matrix">
+  <rows>3</rows>
+  <cols>3</cols>
+  <dt>d</dt>
+  <data>
+    5.3269731878469702e+03 0. 2.9995000000000000e+03 0.
+    5.3087224844703387e+03 1.9995000000000000e+03 0. 0. 1.</data></camera_matrix>
+<distortion_coefficients type_id="opencv-matrix">
+  <rows>1</rows>
+  <cols>12</cols>
+  <dt>d</dt>
+  <data>
+    6.3560509591078072e+00 -2.6936314780810196e+01
+    3.1019200457410531e-03 -3.5312316531380355e-03
+    1.8572282765717993e+01 6.5152115915890594e+00
+    -2.6586855026548822e+01 1.5778258225926129e+01
+    5.1753448780465262e-03 -1.5246131247258700e-03
+    -3.5665328458759369e-03 1.0632333939818829e-02</data></distortion_coefficients>
+<rms_error>9.4834199255595708e-01</rms_error>
+<mean_error>9.4834128009488905e-01</mean_error>
+<image_width>6000</image_width>
+<image_height>4000</image_height>
+<used_images>"IMG_6615.JPG IMG_6616.JPG IMG_6617.JPG IMG_6618.JPG IMG_6619.JPG IMG_6620.JPG IMG_6621.JPG IMG_6622.JPG IMG_6623.JPG IMG_6624.JPG IMG_6625.JPG IMG_6626.JPG IMG_6627.JPG IMG_6628.JPG IMG_6629.JPG IMG_6630.JPG IMG_6632.JPG IMG_6633.JPG IMG_6634.JPG IMG_6635.JPG IMG_6636.JPG IMG_6637.JPG IMG_6638.JPG"</used_images>
+</opencv_storage>

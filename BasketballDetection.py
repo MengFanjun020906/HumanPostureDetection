@@ -3,7 +3,7 @@ from ultralytics import YOLO
 import numpy as np
 
 # 加载预训练的YOLOv8模型
-model = YOLO('yolov8n.pt')  # 或使用专门训练的篮球检测模型
+model = YOLO('models/yolov5s_basketball.pt')  # 或使用专门训练的篮球检测模型
 
 # 视频文件路径
 video_path = 'test_video2.mp4'

@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<opencv_storage>
+<camera_matrix type_id="opencv-matrix">
+  <rows>3</rows>
+  <cols>3</cols>
+  <dt>d</dt>
+  <data>
+    3.9855906001534504e+03 0. 9.5950000000000000e+02 0.
+    3.9756054012083550e+03 6.3950000000000000e+02 0. 0. 1.</data></camera_matrix>
+<distortion_coefficients type_id="opencv-matrix">
+  <rows>1</rows>
+  <cols>12</cols>
+  <dt>d</dt>
+  <data>
+    2.3170770783779790e+01 4.5578520780565896e+01 2.9691738870672780e-03
+    1.2282780919561677e-02 -4.3581283786312532e+01
+    2.3186418293719900e+01 4.1695695463378982e+01
+    -4.3587075357365840e+01 -3.9659032639761949e-02
+    -4.7860099701044066e-02 -1.3129044524706687e-02
+    -2.3417918499708326e-02</data></distortion_coefficients>
+<rms_error>8.8048789545079620e-01</rms_error>
+<mean_error>8.8048776942167939e-01</mean_error>
+<image_width>1920</image_width>
+<image_height>1280</image_height>
+<used_images>"226fbd5ee3335c6e27b142af12453bd3.jpg 239c4d597ecc8d7fc89ee52a47192ef9.jpg 2e0a2511d015ba02cdb7db02c59741c4.jpg 82f4d229a06e38e2ae861a7014d35379.jpg 83a9bd9c5f55c789677d7e2e2098d6d4.jpg 8661e5f90ceea184e285f01e7121575e.jpg 8ba6bbbe057d786f98ec79e6374c76ef.jpg 9885f1e35d5e10952e0e0e9b8ebb5011.jpg a4d483d57a51d35b8d275e1c4b4b43ab.jpg b3264346d2ab539c4d6074a8b908b1c1.jpg c74b3970520d2b82d5733f3ca285b733.jpg d36b19267c73e13d22fdf42b207efeeb.jpg"</used_images>
+</opencv_storage>
