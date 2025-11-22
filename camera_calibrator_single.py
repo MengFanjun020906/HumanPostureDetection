@@ -77,11 +77,11 @@ from mpl_toolkits.mplot3d import Axes3D
 # ======================
 class Config:
     # 棋盘格参数 (根据你的标定板修改!)
-    CHESSBOARD_SIZE = (9, 6)  # 内角点数量 (宽, 高)
-    SQUARE_SIZE = 0.025       # 棋盘格单格尺寸(米) - 25mm
+    CHESSBOARD_SIZE = (8, 11)  # 内角点数量 (宽, 高)
+    SQUARE_SIZE = 0.1       # 棋盘格单格尺寸(米) - 25mm
     
     # 采集设置
-    CAPTURE_DIR = "calibration_images_sxh"  # 保存图像的目录 (统一使用此目录)
+    CAPTURE_DIR = "left"  # 保存图像的目录 (统一使用此目录)
     MIN_IMAGES = 10                    # 最小图像数量
     MAX_IMAGES = 30                    # 最大图像数量
     
@@ -294,21 +294,21 @@ def visualize_calibration_results(mtx, dist, image_files, output_dir):
         original_h, original_w = img.shape[:2]
         
         # 根据图像大小选择合适的降采样比例 (与标定过程保持一致)
-        if max(original_h, original_w) > 4000:
-            target_size = 1000
-        elif max(original_h, original_w) > 2000:
-            target_size = 1500
-        else:
-            target_size = 2000
+        # if max(original_h, original_w) > 4000:
+        #     target_size = 1000
+        # elif max(original_h, original_w) > 2000:
+        #     target_size = 1500
+        # else:
+        #     target_size = 2000
             
-        if max(original_h, original_w) > target_size:
-            scale_factor = target_size / max(original_h, original_w)
-            new_w = int(original_w * scale_factor)
-            new_h = int(original_h * scale_factor)
-            img_scaled = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
-        else:
-            img_scaled = img
-            scale_factor = 1.0
+        # if max(original_h, original_w) > target_size:
+        #     scale_factor = target_size / max(original_h, original_w)
+        #     new_w = int(original_w * scale_factor)
+        #     new_h = int(original_h * scale_factor)
+        #     img_scaled = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        # else:
+        #     img_scaled = img
+        #     scale_factor = 1.0
             
         gray = cv2.cvtColor(img_scaled, cv2.COLOR_BGR2GRAY)
         
@@ -608,27 +608,27 @@ def perform_calibration():
         
         # 对于高分辨率图像(如6000*4000)，使用更激进的降采样策略
         original_h, original_w = img.shape[:2]
-        # 根据图像大小选择合适的降采样比例
-        if max(original_h, original_w) > 4000:
-            # 对于超大图像(>4000像素)，降采样到1000像素
-            target_size = 1000
-        elif max(original_h, original_w) > 2000:
-            # 对于大图像(>2000像素)，降采样到1500像素
-            target_size = 1500
-        else:
-            # 对于较小图像，降采样到2000像素
-            target_size = 2000
+        # # 根据图像大小选择合适的降采样比例
+        # if max(original_h, original_w) > 4000:
+        #     # 对于超大图像(>4000像素)，降采样到1000像素
+        #     target_size = 1000
+        # elif max(original_h, original_w) > 2000:
+        #     # 对于大图像(>2000像素)，降采样到1500像素
+        #     target_size = 1500
+        # else:
+        #     # 对于较小图像，降采样到2000像素
+        #     target_size = 2000
             
-        if max(original_h, original_w) > target_size:
-            scale_factor = target_size / max(original_h, original_w)
-            new_w = int(original_w * scale_factor)
-            new_h = int(original_h * scale_factor)
-            # 使用INTER_AREA插值获得更好的缩放效果
-            img_scaled = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
-            print(f"  图像尺寸从 {original_w}x{original_h} 降采样到 {new_w}x{new_h} (比例: {scale_factor:.2f})")
-        else:
-            img_scaled = img
-            scale_factor = 1.0
+        # if max(original_h, original_w) > target_size:
+        #     scale_factor = target_size / max(original_h, original_w)
+        #     new_w = int(original_w * scale_factor)
+        #     new_h = int(original_h * scale_factor)
+        #     # 使用INTER_AREA插值获得更好的缩放效果
+        #     img_scaled = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        #     print(f"  图像尺寸从 {original_w}x{original_h} 降采样到 {new_w}x{new_h} (比例: {scale_factor:.2f})")
+        # else:
+        img_scaled = img
+        scale_factor = 1.0
             
         gray = cv2.cvtColor(img_scaled, cv2.COLOR_BGR2GRAY)
         h, w = gray.shape[:2]

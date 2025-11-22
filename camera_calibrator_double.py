@@ -15,6 +15,9 @@
 2. 调整 chessboard_size 和 square_size 匹配你的标定板
 3. 运行: python stereo_calibrator.py
 4. 按任意键继续每张图像的检测
+
+实际校准命令：
+D:/anaconda3/envs/retinaface_env/python.exe .\camera_calibrator_double.py --left left --right right --square 0.1 --size 8x11
 """
 
 import numpy as np
@@ -71,7 +74,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='双目摄像头标定工具')
     parser.add_argument('--left', default='left', help='左相机图像目录')
     parser.add_argument('--right', default='right', help='右相机图像目录')
-    parser.add_argument('--size', default='9x6', help='棋盘格内角点尺寸 (宽x高)')
+    parser.add_argument('--size', default='11x8', help='棋盘格内角点尺寸 (宽x高)')
     parser.add_argument('--square', type=float, default=0.025, help='棋盘格方格大小(米)')
     parser.add_argument('--alpha', type=float, default=0.8, help='立体校正alpha参数 (0.0-1.0)')
     parser.add_argument('--output', default='calibration_results_double', help='输出目录')
@@ -265,12 +268,12 @@ def stereo_calibration(args):
             if not ret_right: status.append("右图失败")
             combined = put_text_cn(combined, f"状态: {' & '.join(status)}", (20, 70), (0, 0, 255), 26)
         
-        cv2.imshow('角点检测 - 按任意键继续', combined)
-        key = cv2.waitKey(0) & 0xFF
-        if key == 27:  # ESC
-            print("用户中断标定过程")
-            cv2.destroyAllWindows()
-            return None
+        # cv2.imshow('角点检测 - 按任意键继续', combined)
+        # key = cv2.waitKey(0) & 0xFF
+        # if key == 27:  # ESC
+        #     print("用户中断标定过程")
+        #     cv2.destroyAllWindows()
+        #     return None
         
         # 亚像素精化
         if ret_left and ret_right:
@@ -692,3 +695,4 @@ if __name__ == "__main__":
     print("\n" + "="*60)
     print("标定流程完成!")
     print("="*60)
+

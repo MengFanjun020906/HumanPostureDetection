@@ -1,7 +1,8 @@
 output/
-
+left/
+right/
 *.txt
-
+*.JPG
 .idea/
 calibration_images_sxh/
 calibration_images_tzd/
