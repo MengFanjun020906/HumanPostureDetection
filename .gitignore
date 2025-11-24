@@ -3,6 +3,7 @@ left/
 right/
 *.txt
 *.JPG
+*.jpg
 .idea/
 calibration_images_sxh/
 calibration_images_tzd/
