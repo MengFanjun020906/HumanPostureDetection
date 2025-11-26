@@ -79,7 +79,144 @@ def parse_args():
     parser.add_argument('--alpha', type=float, default=0.8, help='立体校正alpha参数 (0.0-1.0)')
     parser.add_argument('--output', default='calibration_results_double', help='输出目录')
     parser.add_argument('--test', action='store_true', help='标定后立即测试校正效果')
+    # 新增参数：单目标定结果路径
+    parser.add_argument('--single_calib_left', default='', help='左相机单目标定结果目录（可选）')
+    parser.add_argument('--single_calib_right', default='', help='右相机单目标定结果目录（可选）')
     return parser.parse_args()
+
+def load_single_calibration(calib_dir):
+    """加载单目标定结果 - 适配您的JSON格式"""
+    if not calib_dir or not os.path.exists(calib_dir):
+        return None
+    
+    print(f"加载单目标定结果: {calib_dir}")
+    
+    # 尝试加载JSON格式
+    #json_path = os.path.join(calib_dir, 'calibration_report.json')
+    json_path = calib_dir
+    if os.path.exists(json_path):
+        try:
+            import json  # 将import移到with语句之前
+            with open(json_path, 'r', encoding='utf-8') as f:
+                calib_data = json.load(f)  # 现在文件句柄f仍然有效
+            
+            # 提取相机参数 - 适配您的JSON格式
+            camera_matrix = np.array(calib_data['camera_matrix'])
+            dist_coeffs = np.array(calib_data['distortion_coefficients'])
+            
+            # 确保畸变系数格式正确 (1xN 或 Nx1 格式)
+            # 首先确保是浮点类型
+            dist_coeffs = dist_coeffs.astype(np.float64)
+            
+            # 标准化畸变系数格式为1xN
+            if len(dist_coeffs.shape) == 1:
+                dist_coeffs = dist_coeffs.reshape(1, -1)
+            elif dist_coeffs.shape[0] > 1 and dist_coeffs.shape[1] == 1:
+                dist_coeffs = dist_coeffs.T  # 转置为1xN格式
+            elif dist_coeffs.shape[0] == 1 and dist_coeffs.shape[1] > 1:
+                pass  # 已经是正确的1xN格式
+            else:
+                # 如果是NxM格式，取第一行并转置为1xN
+                dist_coeffs = dist_coeffs[0:1, :]
+            
+            # 确保畸变系数不超过14个（OpenCV限制）
+            if dist_coeffs.shape[1] > 14:
+                dist_coeffs = dist_coeffs[:, :14]
+                print(f"  ⚠️ 畸变系数过多，截断为14个")
+            
+            # 获取图像尺寸
+            image_width = calib_data['image_size']['width']
+            image_height = calib_data['image_size']['height']
+            
+            print(f"  ✅ 成功加载JSON格式标定结果")
+            print(f"    相机矩阵: {camera_matrix[0,0]:.1f}, {camera_matrix[1,1]:.1f}")
+            print(f"    主点: ({camera_matrix[0,2]:.1f}, {camera_matrix[1,2]:.1f})")
+            print(f"    图像尺寸: {image_width}x{image_height}")
+            print(f"    重投影误差: {calib_data['reprojection_error']['overall_mean']:.4f} 像素")
+            print(f"    畸变系数形状: {dist_coeffs.shape}")
+            
+            return {
+                'camera_matrix': camera_matrix,
+                'dist_coeffs': dist_coeffs,
+                'image_size': (image_width, image_height),
+                'reprojection_error': calib_data['reprojection_error']['overall_mean']
+            }
+        except Exception as e:
+            print(f"  ❌ 加载JSON失败: {e}")
+    
+    # 尝试加载其他格式作为备选
+    json_path_alt = os.path.join(calib_dir, 'calibration.json')
+    if os.path.exists(json_path_alt):
+        try:
+            with open(json_path_alt, 'r', encoding='utf-8') as f:
+                import json
+                calib_data = json.load(f)
+            
+            # 提取相机参数 - 适配备选JSON格式
+            camera_matrix = np.array(calib_data['camera_matrix'])
+            dist_coeffs = np.array(calib_data['distortion_coefficients'])
+            
+            # 确保畸变系数格式正确
+            if len(dist_coeffs.shape) == 1:
+                dist_coeffs = dist_coeffs.reshape(1, -1)
+            elif dist_coeffs.shape[0] > 1 and dist_coeffs.shape[1] == 1:
+                dist_coeffs = dist_coeffs.T
+            
+            print(f"  ✅ 成功加载备选JSON格式标定结果")
+            return {
+                'camera_matrix': camera_matrix,
+                'dist_coeffs': dist_coeffs
+            }
+        except Exception as e:
+            print(f"  ❌ 加载备选JSON失败: {e}")
+    
+    # 尝试加载NPZ格式
+    npz_path = os.path.join(calib_dir, 'calibration_data.npz')
+    if os.path.exists(npz_path):
+        try:
+            calib_data = np.load(npz_path)
+            camera_matrix = calib_data['camera_matrix']
+            dist_coeffs = calib_data['distortion_coefficients']
+            
+# 确保畸变系数格式正确
+            if len(dist_coeffs.shape) == 1:
+                dist_coeffs = dist_coeffs.reshape(1, -1)
+            elif dist_coeffs.shape[0] > 1 and dist_coeffs.shape[1] == 1:
+                dist_coeffs = dist_coeffs.T
+            
+            print(f"  ✅ 成功加载NPZ格式标定结果")
+            return {
+                'camera_matrix': camera_matrix,
+                'dist_coeffs': dist_coeffs
+            }
+        except Exception as e:
+            print(f"  ❌ 加载NPZ失败: {e}")
+    
+    # 尝试加载XML格式
+    xml_path = os.path.join(calib_dir, 'camera_calibration.xml')
+    if os.path.exists(xml_path):
+        try:
+            fs = cv2.FileStorage(xml_path, cv2.FILE_STORAGE_READ)
+            camera_matrix = fs.getNode('camera_matrix').mat()
+            dist_coeffs = fs.getNode('distortion_coefficients').mat()
+            fs.release()
+            
+            # 确保畸变系数格式正确
+            if len(dist_coeffs.shape) == 1:
+                dist_coeffs = dist_coeffs.reshape(1, -1)
+            elif dist_coeffs.shape[0] > 1 and dist_coeffs.shape[1] == 1:
+                dist_coeffs = dist_coeffs.T
+            
+            print(f"  ✅ 成功加载XML格式标定结果")
+            return {
+                'camera_matrix': camera_matrix,
+                'dist_coeffs': dist_coeffs
+            }
+        except Exception as e:
+            print(f"  ❌ 加载XML失败: {e}")
+    
+    print(f"  ❌ 未找到有效的单目标定结果文件")
+    return None
 
 def pair_images(left_dir, right_dir):
     """基于文件名序号智能配对图像"""
@@ -196,6 +333,28 @@ def stereo_calibration(args):
     print(f"  立体校正 alpha: {args.alpha:.2f} (0=裁剪最大, 1=保留全部)")
     print(f"  输出目录: '{args.output}'")
     
+    # 加载单目标定结果
+    single_calib_left = None
+    single_calib_right = None
+    
+    if args.single_calib_left:
+        single_calib_left = load_single_calibration(args.single_calib_left)
+        if single_calib_left:
+            print(f"  ✅ 已加载左相机单目标定结果")
+            print(f"    重投影误差: {single_calib_left.get('reprojection_error', '未知'):.4f} 像素")
+            print(f"    畸变系数形状: {single_calib_left['dist_coeffs'].shape}")
+        else:
+            print(f"  ❌ 左相机单目标定结果加载失败，将使用独立标定")
+    
+    if args.single_calib_right:
+        single_calib_right = load_single_calibration(args.single_calib_right)
+        if single_calib_right:
+            print(f"  ✅ 已加载右相机单目标定结果")
+            print(f"    重投影误差: {single_calib_right.get('reprojection_error', '未知'):.4f} 像素")
+            print(f"    畸变系数形状: {single_calib_right['dist_coeffs'].shape}")
+        else:
+            print(f"  ❌ 右相机单目标定结果加载失败，将使用独立标定")
+    
     # 创建输出目录
     os.makedirs(args.output, exist_ok=True)
     
@@ -230,6 +389,17 @@ def stereo_calibration(args):
             continue
         
         h, w = img_left.shape[:2]
+        
+        # 检查图像尺寸是否与单目标定结果匹配
+        if single_calib_left and single_calib_left.get('image_size'):
+            calib_size = single_calib_left['image_size']
+            if (w, h) != calib_size:
+                print(f"  ⚠️ 左图尺寸不匹配: 当前{w}x{h}, 标定结果{calib_size[0]}x{calib_size[1]}")
+        
+        if single_calib_right and single_calib_right.get('image_size'):
+            calib_size = single_calib_right['image_size']
+            if (w, h) != calib_size:
+                print(f"  ⚠️ 右图尺寸不匹配: 当前{w}x{h}, 标定结果{calib_size[0]}x{calib_size[1]}")
         
         # 转灰度
         gray_left = cv2.cvtColor(img_left, cv2.COLOR_BGR2GRAY)
@@ -301,96 +471,89 @@ def stereo_calibration(args):
     # 单目优化标志
     calib_flags = cv2.CALIB_RATIONAL_MODEL | cv2.CALIB_THIN_PRISM_MODEL
     
-    # 左相机标定
-    # 单目RMS误差计算原理：
-    # 1. 使用标定得到的相机内参(K)和畸变系数，将3D标定板角点投影回2D图像
-    # 2. 计算投影点与检测到的角点之间的欧氏距离
-    # 3. 对所有点求均方根(RMS)：RMS = sqrt(mean((x_proj - x_detected)^2 + (y_proj - y_detected)^2))
-    # 误差越小越好：<0.5像素=优秀, 0.5-1.0像素=良好, >1.0像素=需改进
+    # 左相机标定 - 使用单目标定结果作为初始值
     print("\n" + "-"*50)
     print("左相机标定...")
     print("-"*50)
-    ret_left, mtx_left, dist_left, rvecs_left, tvecs_left = cv2.calibrateCamera(
-        objpoints, imgpoints_left, (w, h), None, None, flags=calib_flags)
-    print(f"  重投影误差 (RMS): {ret_left:.4f} 像素")
     
-    # 右相机标定
+    # 如果有单目标定结果，使用它作为初始值
+    if single_calib_left:
+        camera_matrix_init = single_calib_left['camera_matrix']
+        dist_coeffs_init = single_calib_left['dist_coeffs']
+        print(f"  使用单目标定结果作为初始值")
+        print(f"    初始畸变系数形状: {dist_coeffs_init.shape}")
+        
+        # 确保畸变系数格式正确
+        if dist_coeffs_init is not None:
+            # 确保是1xN格式
+            if dist_coeffs_init.shape[0] != 1:
+                dist_coeffs_init = dist_coeffs_init.reshape(1, -1)
+            print(f"    标准化后畸变系数形状: {dist_coeffs_init.shape}")
+        
+        calib_flags_left = calib_flags | cv2.CALIB_USE_INTRINSIC_GUESS
+    else:
+        camera_matrix_init = None
+        dist_coeffs_init = None
+        calib_flags_left = calib_flags
+    
+    ret_left, mtx_left, dist_left, rvecs_left, tvecs_left = cv2.calibrateCamera(
+        objpoints, imgpoints_left, (w, h), camera_matrix_init, dist_coeffs_init, flags=calib_flags_left)
+    print(f"  重投影误差 (RMS): {ret_left:.4f} 像素")
+    print(f"  优化后畸变系数形状: {dist_left.shape}")
+    
+    # 右相机标定 - 使用单目标定结果作为初始值
     print("\n" + "-"*50)
     print("右相机标定...")
     print("-"*50)
-    ret_right, mtx_right, dist_right, rvecs_right, tvecs_right = cv2.calibrateCamera(
-        objpoints, imgpoints_right, (w, h), None, None, flags=calib_flags)
-    print(f"  重投影误差 (RMS): {ret_right:.4f} 像素")
     
-    # 立体标定
-    # 立体RMS误差计算原理：
-    # 1. 同时优化左右相机的内参、外参(R, T)和畸变系数
-    # 2. 将3D标定板角点分别投影到左右图像
-    # 3. 计算左右图像投影点与检测角点的误差，并考虑立体几何约束
-    # 4. 对所有点求均方根，得到立体RMS误差
-    # 误差越小越好：<0.5像素=优秀, 0.5-1.0像素=良好, >1.0像素=需改进
-    
-    # 诊断：检查左右图像角点位置差异
-    print("\n" + "-"*50)
-    print("诊断：检查左右图像角点位置...")
-    print("-"*50)
-    if len(objpoints) > 0:
-        # 计算第一对图像中角点的平均位置
-        left_center = np.mean(imgpoints_left[0], axis=0)[0]
-        right_center = np.mean(imgpoints_right[0], axis=0)[0]
-        center_diff = np.abs(left_center - right_center)
-        print(f"  第一对图像角点中心位置:")
-        print(f"    左图: ({left_center[0]:.1f}, {left_center[1]:.1f})")
-        print(f"    右图: ({right_center[0]:.1f}, {right_center[1]:.1f})")
-        print(f"    位置差异: ({center_diff[0]:.1f}, {center_diff[1]:.1f}) 像素")
+    if single_calib_right:
+        camera_matrix_init = single_calib_right['camera_matrix']
+        dist_coeffs_init = single_calib_right['dist_coeffs']
+        print(f"  使用单目标定结果作为初始值")
+        print(f"    初始畸变系数形状: {dist_coeffs_init.shape}")
         
-        # 检查角点数量是否一致
-        for i in range(min(3, len(objpoints))):
-            if len(imgpoints_left[i]) != len(imgpoints_right[i]):
-                print(f"  ⚠️ 警告: 第{i+1}对图像角点数量不一致!")
-                print(f"    左图: {len(imgpoints_left[i])} 个, 右图: {len(imgpoints_right[i])} 个")
+        # 确保畸变系数格式正确
+        if dist_coeffs_init is not None:
+            # 确保是1xN格式
+            if dist_coeffs_init.shape[0] != 1:
+                dist_coeffs_init = dist_coeffs_init.reshape(1, -1)
+            print(f"    标准化后畸变系数形状: {dist_coeffs_init.shape}")
+        
+        calib_flags_right = calib_flags | cv2.CALIB_USE_INTRINSIC_GUESS
+    else:
+        camera_matrix_init = None
+        dist_coeffs_init = None
+        calib_flags_right = calib_flags
     
-    print("\n" + "-"*50)
-    print("立体标定...")
-    print("-"*50)
-    # ret: 重投影误差（值越小表示标定精度越高）
-    # mtx_left: 优化后的左相机内参矩阵 [3, 3]
-    # dist_left: 优化后的左相机畸变系数 [1, 5] 或 [1, 8]
-    # mtx_right: 优化后的右相机内参矩阵 [3, 3]
-    # dist_right: 优化后的右相机畸变系数 [1, 5] 或 [1, 8]
-    # R: 右相机相对于左相机的旋转矩阵 [3, 3]
-    # T: 右相机相对于左相机的平移向量 [3, 1]
-    # E: 本质矩阵（描述两个相机之间的几何关系）[3, 3]
-    # F: 基础矩阵（描述两个图像平面之间的几何关系）[3, 3]
-    stereo_flags = cv2.CALIB_FIX_INTRINSIC | cv2.CALIB_USE_INTRINSIC_GUESS
-    
-    # 如果误差很大，尝试不固定内参（但通常不建议）
-    # stereo_flags = cv2.CALIB_USE_INTRINSIC_GUESS
+    ret_right, mtx_right, dist_right, rvecs_right, tvecs_right = cv2.calibrateCamera(
+        objpoints, imgpoints_right, (w, h), camera_matrix_init, dist_coeffs_init, flags=calib_flags_right)
+    print(f"  重投影误差 (RMS): {ret_right:.4f} 像素")
+    print(f"  优化后畸变系数形状: {dist_right.shape}")
+
+    # 根据单目标定结果质量调整立体标定策略
+    if single_calib_left and single_calib_right:
+        # 如果两个相机都有高质量的单目标定结果，可以固定内参
+        left_error = single_calib_left.get('reprojection_error', float('inf'))
+        right_error = single_calib_right.get('reprojection_error', float('inf'))
+        
+        if left_error < 0.5 and right_error < 0.5:
+            stereo_flags = cv2.CALIB_FIX_INTRINSIC | cv2.CALIB_USE_INTRINSIC_GUESS
+            print("  ✅ 使用高质量单目标定结果，固定内参进行立体标定")
+        else:
+            stereo_flags = cv2.CALIB_USE_INTRINSIC_GUESS
+            print("  ⚠️ 单目标定质量一般，允许优化内参")
+    else:
+        stereo_flags = cv2.CALIB_USE_INTRINSIC_GUESS
+        print("  ℹ️ 使用独立标定结果进行立体标定")
     
     ret, mtx_left, dist_left, mtx_right, dist_right, R, T, E, F = cv2.stereoCalibrate(
-        objpoints,          # 输入参数1: 3D世界坐标系中的棋盘格角点 [N, 1, 3]
-                            # N为图像对数，每个元素是形状为[M, 1, 3]的数组，M为角点数量
-        imgpoints_left,     # 输入参数2: 左相机图像上检测到的2D角点 [N, 1, 2]
-                            # 每个元素对应objpoints中同一索引的3D点在左图像上的投影 
-        imgpoints_right,    # 输入参数3: 右相机图像上检测到的2D角点 [N, 1, 2]
-                            # 每个元素对应objpoints中同一索引的3D点在右图像上的投影
-        mtx_left,           # 输入参数4: 左相机内参矩阵的初始值（通常来自单目标定）[3, 3]
-                            # 包含焦距(fx, fy)、主点坐标(cx, cy)等信息
-        dist_left,          # 输入参数5: 左相机畸变系数的初始值 [1, 5] 或 [1, 8]
-                            # 描述径向和切向畸变
-        mtx_right,          # 输入参数6: 右相机内参矩阵的初始值（通常来自单目标定）[3, 3]
-        dist_right,         # 输入参数7: 右相机畸变系数的初始值 [1, 5] 或 [1, 8]
-        (w, h),             # 输入参数8: 图像尺寸 (宽度, 高度)
-        flags=stereo_flags, # 输入参数9: 标定标志位，控制标定过程的行为
-                            # 常用值包括cv2.CALIB_FIX_INTRINSIC（固定内参）
-        criteria=(          # 输入参数10: 迭代终止条件
-            cv2.TERM_CRITERIA_MAX_ITER + cv2.TERM_CRITERIA_EPS,  # 终止条件类型（迭代次数+精度）
-            100,            # 最大迭代次数
-            1e-5            # 精度阈值
-        )
+        objpoints, imgpoints_left, imgpoints_right,
+        mtx_left, dist_left, mtx_right, dist_right,
+        (w, h), flags=stereo_flags,
+        criteria=(cv2.TERM_CRITERIA_MAX_ITER + cv2.TERM_CRITERIA_EPS, 100, 1e-5)
     )
     print(f"  立体重投影误差 (RMS): {ret:.4f} 像素")
-    
+
     # 诊断：检查立体标定结果
     baseline = np.linalg.norm(T)
     print(f"\n  诊断信息:")
@@ -534,10 +697,14 @@ def stereo_calibration(args):
             'valid_roi_left': validPixROI1,
             'valid_roi_right': validPixROI2
         },
-        'depth_range_m': [float(min_depth), float(max_depth)]
+        'depth_range_m': [float(min_depth), float(max_depth)],
+        'single_calibration_used': {
+            'left': bool(single_calib_left),
+            'right': bool(single_calib_right)
+        }
     }
     
-    with open(output_yaml, 'w') as f:
+    with open(output_yaml, 'w', encoding='utf-8') as f:
         yaml.dump(calibration_data, f, default_flow_style=False)
     
     print(f"\n✅ 标定结果已保存:")
@@ -575,6 +742,7 @@ def stereo_calibration(args):
         'epi_error': epi_error,
         'baseline': baseline
     }
+
 
 def visualize_rectification(first_pair, mtx_left, dist_left, mtx_right, dist_right,
                           R1, R2, P1, P2, output_dir, roi1, roi2):
@@ -625,7 +793,6 @@ def visualize_rectification(first_pair, mtx_left, dist_left, mtx_right, dist_rig
     result = put_text_cn(result, "原始图像", (50, 20), (255, 255, 255), 28)
     result = put_text_cn(result, "校正后图像 + 水平线", (w + 50, 20 + h), (255, 255, 255), 28)
     result = put_text_cn(result, "有效区域", (50, h-30), (0, 0, 255), 24)
-    
     # 保存
     output_path = os.path.join(output_dir, 'rectification_visualization.jpg')
     cv2.imwrite(output_path, result)
@@ -695,4 +862,6 @@ if __name__ == "__main__":
     print("\n" + "="*60)
     print("标定流程完成!")
     print("="*60)
-
+'''
+D:/anaconda3/envs/retinaface_env/python.exe camera_calibrator_double.py --left left --right right --square 0.1 --size 11x8 --single_calib_left ""E:\Investigation\姿态绕杆检测\Code\calibration_results\calibration_data_left_1126\calibration_report.json"" --single_calib_right "E:\Investigation\姿态绕杆检测\Code\calibration_results\calibration_report.json"
+'''
