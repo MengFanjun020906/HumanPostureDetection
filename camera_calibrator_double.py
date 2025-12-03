@@ -224,7 +224,7 @@ def load_single_calibration(calib_path):
                 print(f"  ✅ 成功加载NPZ格式标定结果")
                 return {
                     'camera_matrix': camera_matrix,
-                    'dist_coeffs': dist_coeffs
+'dist_coeffs': dist_coeffs
                 }
     except Exception as e:
         print(f"  ⚠️ 加载NPZ失败: {e}")
@@ -683,6 +683,144 @@ def stereo_calibration(args):
         print(f"    ✓ 基线长度合理")
     
     # 检查旋转矩阵
+    # 添加重投影计算
+    if len(objpoints) > 0:
+        # 计算左相机的重投影点
+        reprojected_left, _ = cv2.projectPoints(
+            objpoints[0], rvecs_left[0], tvecs_left[0], mtx_left, dist_left
+        )
+        # 计算右相机的重投影点
+        reprojected_right, _ = cv2.projectPoints(
+            objpoints[0], rvecs_right[0], tvecs_right[0], mtx_right, dist_right
+        )
+    
+    # 计算立体三维重投影误差
+    stereo_3d_errors = []
+    axis_errors_x = []  # 新增：X轴误差数组
+    axis_errors_y = []  # 新增：Y轴误差数组
+    axis_errors_z = []  # 新增：Z轴误差数组
+    
+    for j in range(len(objpoints[0])):
+        # 左图像误差
+        detected_left = imgpoints_left[0][j, 0]
+        reproj_left = reprojected_left[j, 0]
+        error_left = np.linalg.norm(detected_left - reproj_left)
+        
+        # 右图像误差
+        detected_right = imgpoints_right[0][j, 0]
+        reproj_right = reprojected_right[j, 0]
+        error_right = np.linalg.norm(detected_right - reproj_right)
+        
+        # 立体三维误差（取左右误差的平均值）
+        stereo_error = (error_left + error_right) / 2
+        stereo_3d_errors.append(stereo_error)
+        
+        # 计算各轴误差
+        error_left_x = abs(detected_left[0] - reproj_left[0])
+        error_left_y = abs(detected_left[1] - reproj_left[1])
+        error_right_x = abs(detected_right[0] - reproj_right[0])
+        error_right_y = abs(detected_right[1] - reproj_right[1])
+        
+        # 平均X/Y轴误差
+        error_x = (error_left_x + error_right_x) / 2
+        error_y = (error_left_y + error_right_y) / 2
+        
+        # 计算视差和深度误差
+        disparity_detected = detected_right[0] - detected_left[0]  # 检测视差
+        disparity_reproj = reproj_right[0] - reproj_left[0]        # 重投影视差
+        error_z = abs(disparity_detected - disparity_reproj)       # 深度误差（视差误差）
+        
+        # 收集轴误差数据用于统计
+        axis_errors_x.append(error_x)
+        axis_errors_y.append(error_y)
+        axis_errors_z.append(error_z)
+        
+        # 显示前10个点的详细误差
+        # if j < 10:
+        #     print(f"  点 {j+1}:")
+        #     print(f"    左检测位置: ({detected_left[0]:.1f}, {detected_left[1]:.1f})")
+        #     print(f"    左重投影位置: ({reproj_left[0]:.1f}, {reproj_left[1]:.1f})")
+        #     print(f"    左误差: {error_left:.4f} 像素")
+        #     print(f"    左X轴误差: {error_left_x:.4f} 像素")
+        #     print(f"    左Y轴误差: {error_left_y:.4f} 像素")
+            
+        #     print(f"    右检测位置: ({detected_right[0]:.1f}, {detected_right[1]:.1f})")
+        #     print(f"    右重投影位置: ({reproj_right[0]:.1f}, {reproj_right[1]:.1f})")
+        #     print(f"    右误差: {error_right:.4f} 像素")
+        #     print(f"    右X轴误差: {error_right_x:.4f} 像素")
+        #     print(f"    右Y轴误差: {error_right_y:.4f} 像素")
+            
+        #     print(f"    立体三维误差: {stereo_error:.4f} 像素")
+        #     print(f"    平均X轴误差: {error_x:.4f} 像素")
+        #     print(f"    平均Y轴误差: {error_y:.4f} 像素")
+        #     print(f"    深度(Z轴)误差: {error_z:.4f} 像素")
+            
+        #     # 视差信息
+        #     print(f"    检测视差: {disparity_detected:.1f} 像素")
+        #     print(f"    重投影视差: {disparity_reproj:.1f} 像素")
+        #     print(f"    视差误差: {error_z:.4f} 像素")
+            
+        #     # 误差方向分析
+        #     print(f"    误差方向分析:")
+        #     if error_x > error_y and error_x > error_z:
+        #         print(f"      → 主要误差在X轴（水平方向）")
+        #     elif error_y > error_x and error_y > error_z:
+        #         print(f"      → 主要误差在Y轴（垂直方向）")
+        #     elif error_z > error_x and error_z > error_y:
+        #         print(f"      → 主要误差在Z轴（深度方向）")
+        #     else:
+        #         print(f"      → 误差分布相对均匀")
+            
+        #     print(f"    {'-'*60}")
+    
+    # 统计信息
+    stereo_errors = np.array(stereo_3d_errors)
+    axis_errors_x = np.array(axis_errors_x)  # 转换为numpy数组
+    axis_errors_y = np.array(axis_errors_y)  # 转换为numpy数组
+    axis_errors_z = np.array(axis_errors_z)  # 转换为numpy数组
+    
+    print(f"\n【立体三维重投影误差统计】")
+    print(f"  平均误差: {np.mean(stereo_errors):.4f} 像素")
+    print(f"  标准差: {np.std(stereo_errors):.4f} 像素")
+    print(f"  最小误差: {np.min(stereo_errors):.4f} 像素")
+    print(f"  最大误差: {np.max(stereo_errors):.4f} 像素")
+    
+    # 轴误差统计
+    print(f"\n【轴误差分析】")
+    print(f"  X轴（水平）误差: {np.mean(axis_errors_x):.4f} ± {np.std(axis_errors_x):.4f} 像素")
+    print(f"  Y轴（垂直）误差: {np.mean(axis_errors_y):.4f} ± {np.std(axis_errors_y):.4f} 像素")
+    print(f"  Z轴（深度）误差: {np.mean(axis_errors_z):.4f} ± {np.std(axis_errors_z):.4f} 像素")
+    
+    # 误差贡献度分析
+    total_error = np.mean(stereo_errors)
+    x_contribution = np.mean(axis_errors_x) / total_error * 100
+    y_contribution = np.mean(axis_errors_y) / total_error * 100
+    z_contribution = np.mean(axis_errors_z) / total_error * 100
+    
+    print(f"\n【误差贡献度】")
+    print(f"  X轴贡献度: {x_contribution:.1f}%")
+    print(f"  Y轴贡献度: {y_contribution:.1f}%")
+    print(f"  Z轴贡献度: {z_contribution:.1f}%")
+    
+    # 诊断建议
+    print(f"\n【诊断建议】")
+    if np.mean(axis_errors_z) > np.mean(axis_errors_x) and np.mean(axis_errors_z) > np.mean(axis_errors_y):
+        print(f"  ⚠️ 主要问题在深度方向（Z轴）")
+        print(f"    可能原因: 基线长度估计不准确，外参T向量有问题")
+    elif np.mean(axis_errors_x) > np.mean(axis_errors_y):
+        print(f"  ⚠️ 主要问题在水平方向（X轴）")
+        print(f"    可能原因: 旋转矩阵R不准确，极线几何约束失效")
+    else:
+        print(f"  ⚠️ 主要问题在垂直方向（Y轴）")
+        print(f"    可能原因: 相机未水平对齐，图像配对有问题")
+    
+    # 检查是否有异常误差
+    if np.max(stereo_errors) > 100:
+        print(f"\n⚠️ 警告: 检测到异常大的重投影误差!")
+        print(f"    最大误差: {np.max(stereo_errors):.1f} 像素")
+        print(f"    可能原因: 右相机标定参数严重错误")
+        print(f"    建议: 重新检查右相机的单目标定结果")
+
     rotation_angle = np.linalg.norm(cv2.Rodrigues(R)[0]) * 180 / np.pi
     print(f"    旋转角度: {rotation_angle:.2f} 度")
     if rotation_angle > 45:
@@ -726,7 +864,235 @@ def stereo_calibration(args):
     print(f"  基线长度: {baseline:.4f} 米 {'✅ 合理' if 0.05 < baseline < 0.3 else '⚠️ 验证'}")
     print(f"  左焦距: {mtx_left[0,0]:.1f} 像素, 右焦距: {mtx_right[0,0]:.1f} 像素")
     print(f"  有效深度范围: {min_depth:.2f}m - {max_depth:.2f}m {'✅ 适用' if max_depth > 2.5 else '⚠️ 有限适用'}")
+
+    # 详细误差分析 - 每个点的误差分布
+    print("\n" + "="*60)
+    print("每个点的重投影误差分析")
+    print("="*60)
     
+    # 分析第一对图像作为示例
+    if len(objpoints) > 0:
+        print("\n【第一对图像的详细误差分析】")
+        
+        # 左相机每个点的误差
+        img_points_left_projected, _ = cv2.projectPoints(
+            objpoints[0], rvecs_left[0], tvecs_left[0], mtx_left, dist_left
+        )
+        
+        # 计算每个点的误差
+        point_errors_left = []
+        for j in range(len(objpoints[0])):
+            detected_point = imgpoints_left[0][j, 0]  # 检测到的角点
+            projected_point = img_points_left_projected[j, 0]  # 重投影的点
+            error = np.linalg.norm(detected_point - projected_point)
+            point_errors_left.append(error)
+        
+        # 右相机每个点的误差
+        img_points_right_projected, _ = cv2.projectPoints(
+            objpoints[0], rvecs_right[0], tvecs_right[0], mtx_right, dist_right
+        )
+        
+        point_errors_right = []
+        for j in range(len(objpoints[0])):
+            detected_point = imgpoints_right[0][j, 0]
+            projected_point = img_points_right_projected[j, 0]
+            error = np.linalg.norm(detected_point - projected_point)
+            point_errors_right.append(error)
+        
+        # 统计信息
+        errors_left = np.array(point_errors_left)
+        errors_right = np.array(point_errors_right)
+        
+        print(f"左相机:")
+        print(f"  平均误差: {np.mean(errors_left):.4f} 像素")
+        print(f"  标准差: {np.std(errors_left):.4f} 像素")
+        print(f"  最小误差: {np.min(errors_left):.4f} 像素")
+        print(f"  最大误差: {np.max(errors_left):.4f} 像素")
+        print(f"  误差范围: {np.max(errors_left) - np.min(errors_left):.4f} 像素")
+        
+        print(f"右相机:")
+        print(f"  平均误差: {np.mean(errors_right):.4f} 像素")
+        print(f"  标准差: {np.std(errors_right):.4f} 像素")
+        print(f"  最小误差: {np.min(errors_right):.4f} 像素")
+        print(f"  最大误差: {np.max(errors_right):.4f} 像素")
+        print(f"  误差范围: {np.max(errors_right) - np.min(errors_right):.4f} 像素")
+        
+        # 分析误差分布
+        print(f"\n【误差分布分析】")
+        print(f"左相机误差分布:")
+        print(f"  < 0.1 像素: {np.sum(errors_left < 0.1)} 个点")
+        print(f"  0.1-0.5 像素: {np.sum((errors_left >= 0.1) & (errors_left < 0.5))} 个点")
+        print(f"  0.5-1.0 像素: {np.sum((errors_left >= 0.5) & (errors_left < 1.0))} 个点")
+        print(f"  ≥ 1.0 像素: {np.sum(errors_left >= 1.0)} 个点")
+        
+        # 显示每个点的具体误差（前10个点）
+        print(f"\n【前10个点的详细误差】")
+        for j in range(min(10, len(objpoints[0]))):
+            detected_left = imgpoints_left[0][j, 0]
+            projected_left = img_points_left_projected[j, 0]
+            error_left = point_errors_left[j]
+            
+            detected_right = imgpoints_right[0][j, 0]
+            projected_right = img_points_right_projected[j, 0]
+            error_right = point_errors_right[j]
+            
+            print(f"  点 {j+1}: 左误差={error_left:.4f} 像素, 右误差={error_right:.4f} 像素")
+            print(f"        左检测位置: ({detected_left[0]:.1f}, {detected_left[1]:.1f})")
+            print(f"        左重投影位置: ({projected_left[0]:.1f}, {projected_left[1]:.1f})")
+            print(f"        右检测位置: ({detected_right[0]:.1f}, {detected_right[1]:.1f})")
+            print(f"        右重投影位置: ({projected_right[0]:.1f}, {projected_right[1]:.1f})")
+
+    # 详细误差分析 - 每个图像对的误差
+    print("\n" + "-"*50)
+    print("详细误差分析 (每个图像对)")
+    print("-"*50)
+    for i in range(len(objpoints)):
+        # 计算每个图像对的平均误差
+        img_points_left_projected, _ = cv2.projectPoints(
+            objpoints[i], rvecs_left[i], tvecs_left[i], mtx_left, dist_left
+        )
+        error_left = cv2.norm(imgpoints_left[i], img_points_left_projected, cv2.NORM_L2) / len(objpoints[i])
+        
+        img_points_right_projected, _ = cv2.projectPoints(
+            objpoints[i], rvecs_right[i], tvecs_right[i], mtx_right, dist_right
+        )
+        error_right = cv2.norm(imgpoints_right[i], img_points_right_projected, cv2.NORM_L2) / len(objpoints[i])
+        
+        print(f"  图像对 {i+1}: 左相机误差={error_left:.4f} 像素, 右相机误差={error_right:.4f} 像素")
+        # 立体三维重投影误差分析
+    print("\n" + "="*60)
+    print("立体三维重投影误差分析")
+    print("="*60)
+    
+    # 分析第一对图像作为示例
+    if len(objpoints) > 0:
+        print("\n【第一对图像的立体三维重投影误差】")
+        
+        # 使用三角测量重建三维点
+        imgpoints_left_norm = cv2.undistortPoints(imgpoints_left[0], mtx_left, dist_left, P=P1)
+        imgpoints_right_norm = cv2.undistortPoints(imgpoints_right[0], mtx_right, dist_right, P=P2)
+        
+        # 三角测量重建三维点
+        # 使用线性三角测量方法，通过左右相机的投影矩阵和对应点重建三维点
+        # P1, P2: 左右相机的投影矩阵 [3x4]，包含内参和外参信息
+        # imgpoints_left_norm, imgpoints_right_norm: 左右图像中归一化的对应点坐标 [Nx1x2]
+        # 返回值points_4d: 齐次坐标下的三维点 [4xN]，需要转换为3D坐标
+        points_4d = cv2.triangulatePoints(P1, P2, imgpoints_left_norm, imgpoints_right_norm)
+        points_3d = points_4d[:3] / points_4d[3]  # 齐次坐标转换为3D坐标
+        
+        # 将重建的三维点重投影到左右图像
+        reprojected_left, _ = cv2.projectPoints(points_3d.T, np.zeros(3), np.zeros(3), mtx_left, dist_left)
+        reprojected_right, _ = cv2.projectPoints(points_3d.T, np.zeros(3), np.zeros(3), mtx_right, dist_right)
+        
+        # 计算立体三维重投影误差
+        stereo_3d_errors = []
+        axis_errors_x = []  # 新增：X轴误差数组
+        axis_errors_y = []  # 新增：Y轴误差数组
+        axis_errors_z = []  # 新增：Z轴误差数组
+        
+        for j in range(len(objpoints[0])):
+            # 左图像误差
+            detected_left = imgpoints_left[0][j, 0]
+            reproj_left = reprojected_left[j, 0]
+            error_left = np.linalg.norm(detected_left - reproj_left)
+            
+            # 右图像误差
+            detected_right = imgpoints_right[0][j, 0]
+            reproj_right = reprojected_right[j, 0]
+            error_right = np.linalg.norm(detected_right - reproj_right)
+            
+            # 立体三维误差（取左右误差的平均值）
+            stereo_error = (error_left + error_right) / 2
+            stereo_3d_errors.append(stereo_error)
+            
+            # 计算各轴误差
+            # X轴误差计算：左右相机X坐标误差的平均值
+            # - error_left_x: 左相机检测点与重投影点的X坐标绝对误差
+            # - error_right_x: 右相机检测点与重投影点的X坐标绝对误差  
+            # - error_x: 左右相机X轴误差的平均值，反映水平方向的标定精度
+            error_left_x = abs(detected_left[0] - reproj_left[0])
+            error_left_y = abs(detected_left[1] - reproj_left[1])
+            error_right_x = abs(detected_right[0] - reproj_right[0])
+            # Y轴误差计算：左右相机Y坐标误差的平均值
+            # - error_left_y: 左相机检测点与重投影点的Y坐标绝对误差
+            # - error_right_y: 右相机检测点与重投影点的Y坐标绝对误差
+            # - error_y: 左右相机Y轴误差的平均值，反映垂直方向的标定精度
+            error_right_y = abs(detected_right[1] - reproj_right[1])
+            
+            # 平均X/Y轴误差
+            error_x = (error_left_x + error_right_x) / 2
+            error_y = (error_left_y + error_right_y) / 2
+            
+            # 计算视差和深度误差
+            # - disparity_detected: 检测视差 = 右相机检测点X坐标 - 左相机检测点X坐标
+            # - disparity_reproj: 重投影视差 = 右相机重投影点X坐标 - 左相机重投影点X坐标  
+            # - error_z: 视差误差 = |检测视差 - 重投影视差|，反映深度方向的标定精度
+            # 注意：Z轴误差不是真正的三维深度误差，而是通过视差差异来估计深度方向的误差
+            disparity_detected = detected_right[0] - detected_left[0]  # 检测视差
+            disparity_reproj = reproj_right[0] - reproj_left[0]        # 重投影视差
+            error_z = abs(disparity_detected - disparity_reproj)       # 深度误差（视差误差）
+            
+            # 显示前10个点的详细误差
+            if j < 10:
+                print(f"  点 {j+1}:")
+                print(f"    左检测位置: ({detected_left[0]:.1f}, {detected_left[1]:.1f})")
+                print(f"    左重投影位置: ({reproj_left[0]:.1f}, {reproj_left[1]:.1f})")
+                print(f"    左误差: {error_left:.4f} 像素")
+                print(f"    左X轴误差: {error_left_x:.4f} 像素")
+                print(f"    左Y轴误差: {error_left_y:.4f} 像素")
+                
+                print(f"    右检测位置: ({detected_right[0]:.1f}, {detected_right[1]:.1f})")
+                print(f"    右重投影位置: ({reproj_right[0]:.1f}, {reproj_right[1]:.1f})")
+                print(f"    右误差: {error_right:.4f} 像素")
+                print(f"    右X轴误差: {error_right_x:.4f} 像素")
+                print(f"    右Y轴误差: {error_right_y:.4f} 像素")
+                
+                print(f"    立体三维误差: {stereo_error:.4f} 像素")
+                print(f"    平均X轴误差: {error_x:.4f} 像素")
+                print(f"    平均Y轴误差: {error_y:.4f} 像素")
+                print(f"    深度(Z轴)误差: {error_z:.4f} 像素")
+                
+                # 视差信息
+                print(f"    检测视差: {disparity_detected:.1f} 像素")
+                print(f"    重投影视差: {disparity_reproj:.1f} 像素")
+                print(f"    视差误差: {error_z:.4f} 像素")
+                
+                # 误差方向分析
+                print(f"    误差方向分析:")
+                if error_x > error_y and error_x > error_z:
+                    print(f"      → 主要误差在X轴（水平方向）")
+                elif error_y > error_x and error_y > error_z:
+                    print(f"      → 主要误差在Y轴（垂直方向）")
+                elif error_z > error_x and error_z > error_y:
+                    print(f"      → 主要误差在Z轴（深度方向）")
+                else:
+                    print(f"      → 误差分布相对均匀")
+                
+                print(f"    {'-'*60}")
+
+        # 统计信息
+        stereo_errors = np.array(stereo_3d_errors)
+        print(f"\n【立体三维重投影误差统计】")
+        print(f"  平均误差: {np.mean(stereo_errors):.4f} 像素")
+        print(f"  标准差: {np.std(stereo_errors):.4f} 像素")
+        print(f"  最小误差: {np.min(stereo_errors):.4f} 像素")
+        print(f"  最大误差: {np.max(stereo_errors):.4f} 像素")
+        print(f"  误差范围: {np.max(stereo_errors) - np.min(stereo_errors):.4f} 像素")
+        
+        # 误差分布分析
+        print(f"\n【误差分布】")
+        print(f"  < 0.1 像素: {np.sum(stereo_errors < 0.1)} 个点")
+        print(f"  0.1-0.5 像素: {np.sum((stereo_errors >= 0.1) & (stereo_errors < 0.5))} 个点")
+        print(f"  0.5-1.0 像素: {np.sum((stereo_errors >= 0.5) & (stereo_errors < 1.0))} 个点")
+        print(f"  ≥ 1.0 像素: {np.sum(stereo_errors >= 1.0)} 个点")
+        
+        # 计算立体RMS误差（与cv2.stereoCalibrate的ret值对比）
+        stereo_rms = np.sqrt(np.mean(stereo_errors**2))
+        print(f"\n【立体RMS误差对比】")
+        print(f"  cv2.stereoCalibrate返回的RMS: {ret:.4f} 像素")
+        print(f"  手动计算的立体RMS: {stereo_rms:.4f} 像素")
+        print(f"  差异: {abs(ret - stereo_rms):.4f} 像素")
+
     # 保存结果
     output_xml = os.path.join(args.output, 'stereo_calibration.xml')
     output_yaml = os.path.join(args.output, 'stereo_calibration.yaml')
