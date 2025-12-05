@@ -287,6 +287,215 @@ def pair_images(left_dir, right_dir):
     return paired_images
 
 
+def check_chessboard_consistency(corners_left, corners_right, chessboard_size):
+    """
+    检查左右相机检测到的棋盘格是否满足一致性
+    
+    参数:
+        corners_left: 左相机检测到的角点，形状为(N, 1, 2)
+        corners_right: 右相机检测到的角点，形状为(N, 1, 2)
+        chessboard_size: 棋盘格尺寸 (width, height)
+    
+    返回:
+        consistent: 是否一致
+        consistency_info: 一致性详细信息
+    """
+    consistency_info = {
+        "角点数量": True,
+        "角点排列": True,
+        "棋盘格形状": True,
+        "扭曲程度": True,
+        "详细信息": []
+    }
+    
+    # 首先处理角点数组的维度，确保它们是(N, 2)的形状
+    try:
+        corners_left_2d = corners_left.reshape(-1, 2)
+        corners_right_2d = corners_right.reshape(-1, 2)
+    except Exception as e:
+        consistency_info["详细信息"].append(f"角点数组维度处理错误: {e}")
+        # 如果无法处理维度，返回不一致
+        return False, consistency_info
+    
+    # 1. 检查角点数量
+    if len(corners_left_2d) != len(corners_right_2d):
+        consistency_info["角点数量"] = False
+        consistency_info["详细信息"].append(f"左右相机检测到的角点数量不一致 (左: {len(corners_left_2d)}, 右: {len(corners_right_2d)})")
+    
+    # 2. 检查棋盘格形状
+    expected_points = chessboard_size[0] * chessboard_size[1]
+    if len(corners_left_2d) != expected_points:
+        consistency_info["棋盘格形状"] = False
+        consistency_info["详细信息"].append(f"左相机检测到的角点数量({len(corners_left_2d)})与预期({expected_points})不符")
+    
+    if len(corners_right_2d) != expected_points:
+        consistency_info["棋盘格形状"] = False
+        consistency_info["详细信息"].append(f"右相机检测到的角点数量({len(corners_right_2d)})与预期({expected_points})不符")
+    
+    # 3. 检查角点排列 (计算行和列的平均间隔，检查是否一致)
+    if len(corners_left_2d) >= 4 and len(corners_right_2d) >= 4:
+        try:
+            # 计算左相机角点的行间隔
+            left_corners = corners_left_2d.reshape(chessboard_size[1], chessboard_size[0], 2)
+            left_row_distances = []
+            for i in range(chessboard_size[1]-1):
+                for j in range(chessboard_size[0]):
+                    pt1 = left_corners[i, j]
+                    pt2 = left_corners[i+1, j]
+                    distance = np.linalg.norm(pt1 - pt2)
+                    left_row_distances.append(distance)
+            left_row_mean = np.mean(left_row_distances) if left_row_distances else 0
+            left_row_std = np.std(left_row_distances) if left_row_distances else 0
+            
+            # 计算左相机角点的列间隔
+            left_col_distances = []
+            for i in range(chessboard_size[1]):
+                for j in range(chessboard_size[0]-1):
+                    pt1 = left_corners[i, j]
+                    pt2 = left_corners[i, j+1]
+                    distance = np.linalg.norm(pt1 - pt2)
+                    left_col_distances.append(distance)
+            left_col_mean = np.mean(left_col_distances) if left_col_distances else 0
+            left_col_std = np.std(left_col_distances) if left_col_distances else 0
+            
+            # 计算右相机角点的行间隔
+            right_corners = corners_right_2d.reshape(chessboard_size[1], chessboard_size[0], 2)
+            right_row_distances = []
+            for i in range(chessboard_size[1]-1):
+                for j in range(chessboard_size[0]):
+                    pt1 = right_corners[i, j]
+                    pt2 = right_corners[i+1, j]
+                    distance = np.linalg.norm(pt1 - pt2)
+                    right_row_distances.append(distance)
+            right_row_mean = np.mean(right_row_distances) if right_row_distances else 0
+            right_row_std = np.std(right_row_distances) if right_row_distances else 0
+            
+            # 计算右相机角点的列间隔
+            right_col_distances = []
+            for i in range(chessboard_size[1]):
+                for j in range(chessboard_size[0]-1):
+                    pt1 = right_corners[i, j]
+                    pt2 = right_corners[i, j+1]
+                    distance = np.linalg.norm(pt1 - pt2)
+                    right_col_distances.append(distance)
+            right_col_mean = np.mean(right_col_distances) if right_col_distances else 0
+            right_col_std = np.std(right_col_distances) if right_col_distances else 0
+            
+            # 检查行间隔一致性
+            if left_row_mean > 0 and left_row_std > left_row_mean * 0.3:
+                consistency_info["角点排列"] = False
+                consistency_info["详细信息"].append("左相机棋盘格行间隔不一致，可能存在扭曲")
+            
+            if right_row_mean > 0 and right_row_std > right_row_mean * 0.3:
+                consistency_info["角点排列"] = False
+                consistency_info["详细信息"].append("右相机棋盘格行间隔不一致，可能存在扭曲")
+            
+            # 检查列间隔一致性
+            if left_col_mean > 0 and left_col_std > left_col_mean * 0.3:
+                consistency_info["角点排列"] = False
+                consistency_info["详细信息"].append("左相机棋盘格列间隔不一致，可能存在扭曲")
+            
+            if right_col_mean > 0 and right_col_std > right_col_mean * 0.3:
+                consistency_info["角点排列"] = False
+                consistency_info["详细信息"].append("右相机棋盘格列间隔不一致，可能存在扭曲")
+            
+            # 检查左右相机之间的间隔一致性
+            if left_row_mean > 0 and right_row_mean > 0:
+                row_ratio = abs(left_row_mean - right_row_mean) / max(left_row_mean, right_row_mean)
+                if row_ratio > 0.1:
+                    consistency_info["角点排列"] = False
+                    consistency_info["详细信息"].append("左右相机棋盘格行间隔差异较大，可能存在尺度不一致")
+            
+            if left_col_mean > 0 and right_col_mean > 0:
+                col_ratio = abs(left_col_mean - right_col_mean) / max(left_col_mean, right_col_mean)
+                if col_ratio > 0.1:
+                    consistency_info["角点排列"] = False
+                    consistency_info["详细信息"].append("左右相机棋盘格列间隔差异较大，可能存在尺度不一致")
+            
+            # 4. 检查扭曲程度 (计算棋盘格的透视变换)
+            # 计算左相机的扭曲程度
+            try:
+                # 取四个角的点
+                left_corners_4 = np.array([
+                    left_corners[0, 0],
+                    left_corners[0, -1],
+                    left_corners[-1, -1],
+                    left_corners[-1, 0]
+                ], dtype=np.float32)
+                
+                # 计算矩形区域
+                scale_factor = max(left_row_mean, left_col_mean) if max(left_row_mean, left_col_mean) > 0 else 1.0
+                expected_rect = np.array([
+                    [0, 0],
+                    [chessboard_size[0]-1, 0],
+                    [chessboard_size[0]-1, chessboard_size[1]-1],
+                    [0, chessboard_size[1]-1]
+                ], dtype=np.float32) * scale_factor
+                
+                # 计算透视变换矩阵
+                M_left = cv2.getPerspectiveTransform(left_corners_4, expected_rect)
+                
+                # 计算透视变换后的点与原始点的误差
+                left_transformed = cv2.perspectiveTransform(left_corners_4.reshape(1, -1, 2), M_left)
+                left_transform_error = np.mean(np.abs(left_transformed - expected_rect)) / scale_factor
+                
+                if left_transform_error > 0.2:
+                    consistency_info["扭曲程度"] = False
+                    consistency_info["详细信息"].append("左相机棋盘格扭曲程度较大，可能影响标定精度")
+            except Exception as e:
+                consistency_info["详细信息"].append(f"计算左相机扭曲程度时出错: {e}")
+            
+            # 计算右相机的扭曲程度
+            try:
+                # 取四个角的点
+                right_corners_4 = np.array([
+                    right_corners[0, 0],
+                    right_corners[0, -1],
+                    right_corners[-1, -1],
+                    right_corners[-1, 0]
+                ], dtype=np.float32)
+                
+                # 计算矩形区域
+                scale_factor_right = max(right_row_mean, right_col_mean) if max(right_row_mean, right_col_mean) > 0 else 1.0
+                expected_rect_right = np.array([
+                    [0, 0],
+                    [chessboard_size[0]-1, 0],
+                    [chessboard_size[0]-1, chessboard_size[1]-1],
+                    [0, chessboard_size[1]-1]
+                ], dtype=np.float32) * scale_factor_right
+                
+                # 计算透视变换矩阵
+                M_right = cv2.getPerspectiveTransform(right_corners_4, expected_rect_right)
+                
+                # 计算透视变换后的点与原始点的误差
+                right_transformed = cv2.perspectiveTransform(right_corners_4.reshape(1, -1, 2), M_right)
+                right_transform_error = np.mean(np.abs(right_transformed - expected_rect_right)) / scale_factor_right
+                
+                if right_transform_error > 0.2:
+                    consistency_info["扭曲程度"] = False
+                    consistency_info["详细信息"].append("右相机棋盘格扭曲程度较大，可能影响标定精度")
+            except Exception as e:
+                consistency_info["详细信息"].append(f"计算右相机扭曲程度时出错: {e}")
+        except Exception as e:
+            consistency_info["详细信息"].append(f"角点排列或扭曲程度检查错误: {e}")
+            # 如果出现错误，将角点排列和扭曲程度标记为不一致
+            consistency_info["角点排列"] = False
+            consistency_info["扭曲程度"] = False
+    else:
+        # 如果角点数量不足4个，无法进行排列和扭曲检查
+        consistency_info["角点排列"] = False
+        consistency_info["扭曲程度"] = False
+        consistency_info["详细信息"].append(f"角点数量不足，无法进行排列和扭曲检查 (左: {len(corners_left_2d)}, 右: {len(corners_right_2d)})")
+    
+    # 综合判断是否一致
+    consistent = (consistency_info["角点数量"] and 
+                 consistency_info["角点排列"] and 
+                 consistency_info["棋盘格形状"] and 
+                 consistency_info["扭曲程度"])
+    
+    return consistent, consistency_info
+
+
 def compute_epipolar_error(objpoints, imgpoints_left, imgpoints_right, 
                           mtx_left, dist_left, mtx_right, dist_right,
                           R1, R2, P1, P2):
@@ -507,12 +716,25 @@ def stereo_calibration(args):
             corners_left_refined = cv2.cornerSubPix(gray_left, corners_left, (11, 11), (-1, -1), criteria)
             corners_right_refined = cv2.cornerSubPix(gray_right, corners_right, (11, 11), (-1, -1), criteria)
             
+            # 检查棋盘格一致性
+            consistent, consistency_info = check_chessboard_consistency(
+                corners_left_refined, corners_right_refined, chessboard_size
+            )
+            
             objpoints.append(objp)
             imgpoints_left.append(corners_left_refined)
             imgpoints_right.append(corners_right_refined)
             valid_pairs += 1
             
             print(f"  对 {idx+1}: 成功检测角点 (累计: {valid_pairs})")
+            
+            # 输出一致性检查结果
+            if consistent:
+                print(f"    ✅ 棋盘格一致性: 满足要求")
+            else:
+                print(f"    ❌ 棋盘格一致性: 不满足要求")
+                for info in consistency_info["详细信息"]:
+                    print(f"    - {info}")
         else:
             print(f"  对 {idx+1}: 角点检测失败")
     
@@ -779,17 +1001,17 @@ def stereo_calibration(args):
     axis_errors_y = np.array(axis_errors_y)  # 转换为numpy数组
     axis_errors_z = np.array(axis_errors_z)  # 转换为numpy数组
     
-    print(f"\n【立体三维重投影误差统计】")
-    print(f"  平均误差: {np.mean(stereo_errors):.4f} 像素")
-    print(f"  标准差: {np.std(stereo_errors):.4f} 像素")
-    print(f"  最小误差: {np.min(stereo_errors):.4f} 像素")
-    print(f"  最大误差: {np.max(stereo_errors):.4f} 像素")
+    # print(f"\n【立体三维重投影误差统计】")
+    # print(f"  平均误差: {np.mean(stereo_errors):.4f} 像素")
+    # print(f"  标准差: {np.std(stereo_errors):.4f} 像素")
+    # print(f"  最小误差: {np.min(stereo_errors):.4f} 像素")
+    # print(f"  最大误差: {np.max(stereo_errors):.4f} 像素")
     
     # 轴误差统计
-    print(f"\n【轴误差分析】")
-    print(f"  X轴（水平）误差: {np.mean(axis_errors_x):.4f} ± {np.std(axis_errors_x):.4f} 像素")
-    print(f"  Y轴（垂直）误差: {np.mean(axis_errors_y):.4f} ± {np.std(axis_errors_y):.4f} 像素")
-    print(f"  Z轴（深度）误差: {np.mean(axis_errors_z):.4f} ± {np.std(axis_errors_z):.4f} 像素")
+    # print(f"\n【轴误差分析】")
+    # print(f"  X轴（水平）误差: {np.mean(axis_errors_x):.4f} ± {np.std(axis_errors_x):.4f} 像素")
+    # print(f"  Y轴（垂直）误差: {np.mean(axis_errors_y):.4f} ± {np.std(axis_errors_y):.4f} 像素")
+    # print(f"  Z轴（深度）误差: {np.mean(axis_errors_z):.4f} ± {np.std(axis_errors_z):.4f} 像素")
     
     # 误差贡献度分析
     total_error = np.mean(stereo_errors)
@@ -797,22 +1019,22 @@ def stereo_calibration(args):
     y_contribution = np.mean(axis_errors_y) / total_error * 100
     z_contribution = np.mean(axis_errors_z) / total_error * 100
     
-    print(f"\n【误差贡献度】")
-    print(f"  X轴贡献度: {x_contribution:.1f}%")
-    print(f"  Y轴贡献度: {y_contribution:.1f}%")
-    print(f"  Z轴贡献度: {z_contribution:.1f}%")
+    # print(f"\n【误差贡献度】")
+    # print(f"  X轴贡献度: {x_contribution:.1f}%")
+    # print(f"  Y轴贡献度: {y_contribution:.1f}%")
+    # print(f"  Z轴贡献度: {z_contribution:.1f}%")
     
     # 诊断建议
-    print(f"\n【诊断建议】")
-    if np.mean(axis_errors_z) > np.mean(axis_errors_x) and np.mean(axis_errors_z) > np.mean(axis_errors_y):
-        print(f"  ⚠️ 主要问题在深度方向（Z轴）")
-        print(f"    可能原因: 基线长度估计不准确，外参T向量有问题")
-    elif np.mean(axis_errors_x) > np.mean(axis_errors_y):
-        print(f"  ⚠️ 主要问题在水平方向（X轴）")
-        print(f"    可能原因: 旋转矩阵R不准确，极线几何约束失效")
-    else:
-        print(f"  ⚠️ 主要问题在垂直方向（Y轴）")
-        print(f"    可能原因: 相机未水平对齐，图像配对有问题")
+    # print(f"\n【诊断建议】")
+    # if np.mean(axis_errors_z) > np.mean(axis_errors_x) and np.mean(axis_errors_z) > np.mean(axis_errors_y):
+    #     print(f"  ⚠️ 主要问题在深度方向（Z轴）")
+    #     print(f"    可能原因: 基线长度估计不准确，外参T向量有问题")
+    # elif np.mean(axis_errors_x) > np.mean(axis_errors_y):
+    #     print(f"  ⚠️ 主要问题在水平方向（X轴）")
+    #     print(f"    可能原因: 旋转矩阵R不准确，极线几何约束失效")
+    # else:
+    #     print(f"  ⚠️ 主要问题在垂直方向（Y轴）")
+    #     print(f"    可能原因: 相机未水平对齐，图像配对有问题")
     
     # 检查是否有异常误差
     if np.max(stereo_errors) > 100:
