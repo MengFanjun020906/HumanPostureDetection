@@ -507,17 +507,20 @@ def compute_epipolar_error(objpoints, imgpoints_left, imgpoints_right,
     
     for i in range(len(objpoints)):
         # 校正左图点
-        pts_left = imgpoints_left[i]
-        pts_left_rect = cv2.undistortPoints(pts_left, mtx_left, dist_left, R=R1, P=P1)
+        pts_left = imgpoints_left[i].reshape(-1, 1, 2)  # 确保形状为 (N, 1, 2)
+        pts_left_rect = cv2.undistortPoints(pts_left, mtx_left, dist_left, R=R1, P=None)
         
         # 校正右图点
-        pts_right = imgpoints_right[i]
-        pts_right_rect = cv2.undistortPoints(pts_right, mtx_right, dist_right, R=R2, P=P2)
+        pts_right = imgpoints_right[i].reshape(-1, 1, 2)  # 确保形状为 (N, 1, 2)
+        pts_right_rect = cv2.undistortPoints(pts_right, mtx_right, dist_right, R=R2, P=None)
         
         # 计算y坐标差 (极线误差)
         for j in range(len(pts_left_rect)):
             pt_l = pts_left_rect[j, 0]
             pt_r = pts_right_rect[j, 0]
+            
+            # 在归一化空间中计算极线误差（y坐标差）
+            # 因为我们已经应用了立体校正，校正后的极线应该是水平的
             error = abs(pt_l[1] - pt_r[1])  # y坐标差
             total_error += error
             total_points += 1
@@ -836,6 +839,11 @@ def stereo_calibration(args):
     # 添加模型标志
     stereo_flags |= cv2.CALIB_RATIONAL_MODEL
     
+    # 添加更多优化标志以提高标定质量
+    stereo_flags |= cv2.CALIB_FIX_K3  # 固定第三径向畸变系数
+    stereo_flags |= cv2.CALIB_FIX_K4  # 固定第四径向畸变系数
+    stereo_flags |= cv2.CALIB_FIX_K5  # 固定第五径向畸变系数
+    
     print(f"  使用立体标定标志: {stereo_flags}")
     
     # 立体标定 - 安全调用
@@ -854,7 +862,7 @@ def stereo_calibration(args):
             dist_right,
             image_size, 
             flags=stereo_flags,
-            criteria=(cv2.TERM_CRITERIA_MAX_ITER + cv2.TERM_CRITERIA_EPS, 100, 1e-5)
+            criteria=(cv2.TERM_CRITERIA_MAX_ITER + cv2.TERM_CRITERIA_EPS, 300, 1e-6)
         )
         print(f"  ✅ 立体标定成功! RMS误差: {ret:.4f} 像素")
     except cv2.error as e:
@@ -951,6 +959,38 @@ def stereo_calibration(args):
         disparity_detected = detected_right[0] - detected_left[0]  # 检测视差
         disparity_reproj = reproj_right[0] - reproj_left[0]        # 重投影视差
         error_z = abs(disparity_detected - disparity_reproj)       # 深度误差（视差误差）
+        
+        # 新增：计算三维空间误差（使用三角化重建的三维点与实际物体点的差异）
+        if len(objpoints) > 0 and j < len(objpoints[0]):
+            actual_3d_point = objpoints[0][j].flatten()  # 实际物体点
+            
+            # 三角化重建三维点
+            try:
+                # 准备用于三角化的点
+                left_point = np.array([[detected_left]], dtype=np.float32)
+                right_point = np.array([[detected_right]], dtype=np.float32)
+                
+                # 归一化图像点
+                left_norm = cv2.undistortPoints(left_point, mtx_left, dist_left, R=R1, P=P1)
+                right_norm = cv2.undistortPoints(right_point, mtx_right, dist_right, R=R2, P=P2)
+                
+                # 三角化
+                points_4d = cv2.triangulatePoints(P1, P2, left_norm, right_norm)
+                points_3d = points_4d[:3] / points_4d[3]  # 齐次坐标转换为3D坐标
+                
+                # 计算三维空间欧氏距离误差
+                reconstructed_3d_point = points_3d.flatten()
+                if len(reconstructed_3d_point) == 3 and len(actual_3d_point) == 3:
+                    # 检查三维点坐标是否合理
+                    if np.all(np.isfinite(reconstructed_3d_point)) and np.all(np.abs(reconstructed_3d_point) < 10000):
+                        error_3d_spatial = np.linalg.norm(actual_3d_point - reconstructed_3d_point)
+                        
+                        # 更新误差统计
+                        axis_errors_z[-1] = error_3d_spatial  # 替换原来的视差误差为真实三维空间误差
+                        stereo_error = (error_left + error_right + error_3d_spatial) / 3  # 更新立体三维误差
+                        stereo_3d_errors[-1] = stereo_error  # 替换原来的立体误差
+            except Exception as e:
+                pass  # 如果三角化失败，保持原来的误差计算
         
         # 收集轴误差数据用于统计
         axis_errors_x.append(error_x)
@@ -1248,6 +1288,38 @@ def stereo_calibration(args):
             # 计算视差和深度误差
             # - disparity_detected: 检测视差 = 右相机检测点X坐标 - 左相机检测点X坐标
             # - disparity_reproj: 重投影视差 = 右相机重投影点X坐标 - 左相机重投影点X坐标  
+            
+            # 新增：计算三维空间误差（使用三角化重建的三维点与实际物体点的差异）
+            if len(objpoints) > 0 and j < len(objpoints[0]):
+                actual_3d_point = objpoints[0][j].flatten()  # 实际物体点
+                
+                # 三角化重建三维点
+                try:
+                    # 准备用于三角化的点
+                    left_point = np.array([[detected_left]], dtype=np.float32)
+                    right_point = np.array([[detected_right]], dtype=np.float32)
+                    
+                    # 归一化图像点
+                    left_norm = cv2.undistortPoints(left_point, mtx_left, dist_left, R=R1, P=P1)
+                    right_norm = cv2.undistortPoints(right_point, mtx_right, dist_right, R=R2, P=P2)
+                    
+                    # 三角化
+                    points_4d = cv2.triangulatePoints(P1, P2, left_norm, right_norm)
+                    points_3d = points_4d[:3] / points_4d[3]  # 齐次坐标转换为3D坐标
+                    
+                    # 计算三维空间欧氏距离误差
+                    reconstructed_3d_point = points_3d.flatten()
+                    if len(reconstructed_3d_point) == 3 and len(actual_3d_point) == 3:
+                        # 检查三维点坐标是否合理
+                        if np.all(np.isfinite(reconstructed_3d_point)) and np.all(np.abs(reconstructed_3d_point) < 10000):
+                            error_3d_spatial = np.linalg.norm(actual_3d_point - reconstructed_3d_point)
+                            
+                            # 更新误差统计
+                            axis_errors_z[-1] = error_3d_spatial  # 替换原来的视差误差为真实三维空间误差
+                            stereo_error = (error_left + error_right + error_3d_spatial) / 3  # 更新立体三维误差
+                            stereo_3d_errors[-1] = stereo_error  # 替换原来的立体误差
+                except Exception as e:
+                    pass  # 如果三角化失败，保持原来的误差计算
             # - error_z: 视差误差 = |检测视差 - 重投影视差|，反映深度方向的标定精度
             # 注意：Z轴误差不是真正的三维深度误差，而是通过视差差异来估计深度方向的误差
             disparity_detected = detected_right[0] - detected_left[0]  # 检测视差
