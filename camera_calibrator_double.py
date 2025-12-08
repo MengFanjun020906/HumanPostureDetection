@@ -821,7 +821,8 @@ def stereo_calibration(args):
             use_quality_check = True
             print(f"  单目标定质量: 左={left_error:.4f} 像素, 右={right_error:.4f} 像素")
             
-            if args.fix_intrinsic or (left_error < 0.3 and right_error < 0.3):
+            # 调整阈值，当单目标定误差<0.2像素时固定内参（更合理的标准，适合实际应用）
+            if args.fix_intrinsic or (left_error < 0.2 and right_error < 0.2):
                 stereo_flags |= cv2.CALIB_FIX_INTRINSIC
                 print("  ✅ 使用高质量单目标定，固定内参")
             else:
@@ -839,10 +840,18 @@ def stereo_calibration(args):
     # 添加模型标志
     stereo_flags |= cv2.CALIB_RATIONAL_MODEL
     
-    # 添加更多优化标志以提高标定质量
-    stereo_flags |= cv2.CALIB_FIX_K3  # 固定第三径向畸变系数
-    stereo_flags |= cv2.CALIB_FIX_K4  # 固定第四径向畸变系数
-    stereo_flags |= cv2.CALIB_FIX_K5  # 固定第五径向畸变系数
+    # 当固定内参时，固定更多畸变系数以提高稳定性
+    if stereo_flags & cv2.CALIB_FIX_INTRINSIC:
+        stereo_flags |= cv2.CALIB_FIX_K1  # 固定第一径向畸变系数
+        stereo_flags |= cv2.CALIB_FIX_K2  # 固定第二径向畸变系数
+        stereo_flags |= cv2.CALIB_FIX_K3  # 固定第三径向畸变系数
+        # 注意：OpenCV中没有CALIB_FIX_P1/CALIB_FIX_P2标志，切向畸变系数会一起优化
+        print("  ✅ 固定内参时，同时固定径向畸变系数")
+    else:
+        # 不固定内参时，仍固定高阶畸变系数以提高稳定性
+        stereo_flags |= cv2.CALIB_FIX_K3  # 固定第三径向畸变系数
+        stereo_flags |= cv2.CALIB_FIX_K4  # 固定第四径向畸变系数
+        stereo_flags |= cv2.CALIB_FIX_K5  # 固定第五径向畸变系数
     
     print(f"  使用立体标定标志: {stereo_flags}")
     
@@ -852,6 +861,9 @@ def stereo_calibration(args):
     print("-"*50)
     
     try:
+        # 调整优化终止条件，增加迭代次数和提高精度要求
+        criteria = (cv2.TERM_CRITERIA_MAX_ITER + cv2.TERM_CRITERIA_EPS, 1000, 1e-8)
+        
         ret, mtx_left, dist_left, mtx_right, dist_right, R, T, E, F = cv2.stereoCalibrate(
             objpoints, 
             imgpoints_left, 
@@ -862,7 +874,7 @@ def stereo_calibration(args):
             dist_right,
             image_size, 
             flags=stereo_flags,
-            criteria=(cv2.TERM_CRITERIA_MAX_ITER + cv2.TERM_CRITERIA_EPS, 300, 1e-6)
+            criteria=criteria
         )
         print(f"  ✅ 立体标定成功! RMS误差: {ret:.4f} 像素")
     except cv2.error as e:
@@ -1503,7 +1515,11 @@ def visualize_rectification(first_pair, mtx_left, dist_left, mtx_right, dist_rig
         print("  警告: 无法读取测试图像，跳过可视化")
         return
     
+    # 确保图像尺寸一致
     h, w = img_left.shape[:2]
+    if img_right.shape[:2] != (h, w):
+        img_right = cv2.resize(img_right, (w, h))
+        print(f"  ⚠️ 调整右图像尺寸为: {w}x{h}")
     
     # 计算校正映射
     map1_left, map2_left = cv2.initUndistortRectifyMap(
@@ -1515,23 +1531,41 @@ def visualize_rectification(first_pair, mtx_left, dist_left, mtx_right, dist_rig
     img_left_rect = cv2.remap(img_left, map1_left, map2_left, cv2.INTER_LANCZOS4)
     img_right_rect = cv2.remap(img_right, map1_right, map2_right, cv2.INTER_LANCZOS4)
     
+    # 确保校正后的图像尺寸一致
+    if img_left_rect.shape[:2] != (h, w):
+        img_left_rect = cv2.resize(img_left_rect, (w, h))
+        print(f"  ⚠️ 调整左校正图像尺寸为: {w}x{h}")
+    if img_right_rect.shape[:2] != (h, w):
+        img_right_rect = cv2.resize(img_right_rect, (w, h))
+        print(f"  ⚠️ 调整右校正图像尺寸为: {w}x{h}")
+    
     # 绘制水平线
     line_img_left = img_left_rect.copy()
     line_img_right = img_right_rect.copy()
-    for y in range(50, h, 50):
-        cv2.line(line_img_left, (0, y), (w, y), (0, 255, 0), 1)
-        cv2.line(line_img_right, (0, y), (w, y), (0, 255, 0), 1)
+    # 使用黄色虚线，更清晰
+    for y in range(20, h, 20):
+        cv2.line(line_img_left, (0, y), (w, y), (0, 255, 255), 2, cv2.LINE_AA)
+        cv2.line(line_img_right, (0, y), (w, y), (0, 255, 255), 2, cv2.LINE_AA)
     
     # 标记有效区域
     if roi1[2] > 0 and roi1[3] > 0:
-        cv2.rectangle(line_img_left, (roi1[0], roi1[1]), (roi1[0]+roi1[2], roi1[1]+roi1[3]), (0, 0, 255), 2)
+        cv2.rectangle(line_img_left, (roi1[0], roi1[1]), (roi1[0]+roi1[2], roi1[1]+roi1[3]), (0, 255, 0), 2, cv2.LINE_AA)
     if roi2[2] > 0 and roi2[3] > 0:
-        cv2.rectangle(line_img_right, (roi2[0], roi2[1]), (roi2[0]+roi2[2], roi2[1]+roi2[3]), (0, 0, 255), 2)
+        cv2.rectangle(line_img_right, (roi2[0], roi2[1]), (roi2[0]+roi2[2], roi2[1]+roi2[3]), (0, 255, 0), 2, cv2.LINE_AA)
     
-    # 拼接结果
+    # 拼接结果 - 确保所有图像尺寸一致
     top_row = np.hstack((img_left, img_right))
     bottom_row = np.hstack((line_img_left, line_img_right))
+    
+    # 确保上下行尺寸一致
+    if top_row.shape[1] != bottom_row.shape[1]:
+        min_width = min(top_row.shape[1], bottom_row.shape[1])
+        top_row = top_row[:, :min_width]
+        bottom_row = bottom_row[:, :min_width]
+        print(f"  ⚠️ 调整拼接宽度为: {min_width}")
+    
     result = np.vstack((top_row, bottom_row))
+    print(f"  ✅ 拼接后图像尺寸: {result.shape}")
     
     # 添加标注
     result = put_text_cn(result, "原始图像", (50, 20), (255, 255, 255), 28)
