@@ -507,7 +507,11 @@ def compute_epipolar_error(objpoints, imgpoints_left, imgpoints_right,
     
     for i in range(len(objpoints)):
         # 校正左图点
+        # 使用P矩阵将校正后的点转换回像素坐标，以便计算真实的像素单位极线误差
         pts_left = imgpoints_left[i].reshape(-1, 1, 2)  # 确保形状为 (N, 1, 2)
+        '''
+        是 OpenCV 中用于 对图像点进行去畸变和几何变换 的函数。它主要用于校正相机镜头畸变，并可以选择性地应用旋转和投影变换，将点从图像平面映射到指定的坐标系统。
+        '''
         pts_left_rect = cv2.undistortPoints(pts_left, mtx_left, dist_left, R=R1, P=None)
         
         # 校正右图点
@@ -519,9 +523,9 @@ def compute_epipolar_error(objpoints, imgpoints_left, imgpoints_right,
             pt_l = pts_left_rect[j, 0]
             pt_r = pts_right_rect[j, 0]
             
-            # 在归一化空间中计算极线误差（y坐标差）
+            # 在像素坐标中计算极线误差（y坐标差）
             # 因为我们已经应用了立体校正，校正后的极线应该是水平的
-            error = abs(pt_l[1] - pt_r[1])  # y坐标差
+            error = abs(pt_l[1] - pt_r[1])  # y坐标差（像素单位）
             total_error += error
             total_points += 1
     
@@ -876,7 +880,8 @@ def stereo_calibration(args):
             flags=stereo_flags,
             criteria=criteria
         )
-        print(f"  ✅ 立体标定成功! RMS误差: {ret:.4f} 像素")
+        # 注意：将使用手动计算的RMS误差而非cv2.stereoCalibrate返回的ret值
+        print(f"  ✅ 立体标定成功!")
     except cv2.error as e:
         print(f"  ❌ 立体标定失败: {e}")
         print("  尝试降级策略...")
@@ -891,7 +896,8 @@ def stereo_calibration(args):
                 image_size, flags=fallback_flags,
                 criteria=(cv2.TERM_CRITERIA_MAX_ITER + cv2.TERM_CRITERIA_EPS, 100, 1e-5)
             )
-            print(f"  ✅ 降级标定成功! RMS误差: {ret:.4f}")
+            # 注意：将使用手动计算的RMS误差而非cv2.stereoCalibrate返回的ret值
+            print(f"  ✅ 降级标定成功!")
         except cv2.error as e2:
             print(f"  ❌ 降级标定也失败: {e2}")
             print("  尝试最简模型...")
@@ -908,7 +914,8 @@ def stereo_calibration(args):
                     image_size, flags=simple_flags,
                     criteria=(cv2.TERM_CRITERIA_MAX_ITER + cv2.TERM_CRITERIA_EPS, 100, 1e-5)
                 )
-                print(f"  ✅ 最简模型标定成功! RMS误差: {ret:.4f}")
+                # 注意：将使用手动计算的RMS误差而非cv2.stereoCalibrate返回的ret值
+                print(f"  ✅ 最简模型标定成功!")
             except cv2.error as e3:
                 print(f"  ❌ 所有策略都失败: {e3}")
                 return None
@@ -1117,6 +1124,13 @@ def stereo_calibration(args):
         mtx_left, dist_left, mtx_right, dist_right,
         R1, R2, P1, P2
     )
+
+    print(f"  P1矩阵形状: {P1.shape}, P2矩阵形状: {P2.shape}")
+    print(f"  P1矩阵: \n{P1}")
+    print(f"  P2矩阵: \n{P2}")
+    print(f"  图像尺寸: {image_size}")
+    print(f"  左相机内参焦距: fx={mtx_left[0,0]}, fy={mtx_left[1,1]}")
+    print(f"  右相机内参焦距: fx={mtx_right[0,0]}, fy={mtx_right[1,1]}")
     print(f"  平均极线误差: {epi_error:.4f} 像素 (基于 {total_points} 个点)")
     
     # 物理参数验证
@@ -1395,7 +1409,7 @@ def stereo_calibration(args):
         # 计算立体RMS误差（与cv2.stereoCalibrate的ret值对比）
         stereo_rms = np.sqrt(np.mean(stereo_errors**2))
         print(f"\n【立体RMS误差对比】")
-        print(f"  cv2.stereoCalibrate返回的RMS: {ret:.4f} 像素")
+        print(f"  cv2.stereoCalibrate返回的RMS: {ret:.4f} 像素 (已不再使用)")
         print(f"  手动计算的立体RMS: {stereo_rms:.4f} 像素")
         print(f"  差异: {abs(ret - stereo_rms):.4f} 像素")
 
@@ -1420,7 +1434,7 @@ def stereo_calibration(args):
     fs.write("Q", Q)
     fs.write("image_width", w)
     fs.write("image_height", h)
-    fs.write("rms_error", ret)
+    fs.write("rms_error", stereo_rms)
     fs.write("epipolar_error", epi_error)
     fs.write("baseline", baseline)
     fs.write("validPixROI1", np.array(validPixROI1))
@@ -1603,4 +1617,12 @@ if __name__ == "__main__":
     print("="*60)
 '''
 D:/anaconda3/envs/retinaface_env/python.exe camera_calibrator_double.py --left left --right right --square 0.1 --size 11x8 --single_calib_left ""E:\Investigation\姿态绕杆检测\Code\calibration_results\calibration_data_left_1126\calibration_report.json"" --single_calib_right "E:\Investigation\姿态绕杆检测\Code\calibration_results\calibration_report.json"
+'''
+
+'''
+重映射误差手动算一下
+以操场作为某一个角点作为原点，设置应用坐标系
+计算同一个标定板的距离
+图像像素->三维坐标
+封装像素到三维位置
 '''
