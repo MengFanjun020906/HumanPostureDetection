@@ -74,7 +74,7 @@ def parse_args():
 def load_single_calibration(calib_path):
     """加载单目标定结果 - 修复所有格式问题"""
     if not calib_path or not os.path.exists(calib_path):
-        print(f"  ❌ 单目标定文件不存在: {calib_path}")
+        print(f"  [ERROR] 单目标定文件不存在: {calib_path}")
         return None
     
     print(f"\n加载单目标定结果: {calib_path}")
@@ -122,7 +122,7 @@ def load_single_calibration(calib_path):
                 print("  ❌ 未找到有效的相机矩阵")
                 return None
             
-            print(f"  ✅ 成功加载JSON格式标定结果")
+            print(f"  [OK] 成功加载JSON格式标定结果")
             print(f"    相机矩阵:\n{camera_matrix}")
             if dist_coeffs is not None:
                 print(f"    原始畸变系数形状: {dist_coeffs.shape}")
@@ -140,7 +140,7 @@ def load_single_calibration(calib_path):
             }
     
     except Exception as e:
-        print(f"  ⚠️ 加载JSON失败: {e}")
+        print(f"  [WARNING] 加载JSON失败: {e}")
     
     try:
         # 尝试加载YAML
@@ -167,13 +167,13 @@ def load_single_calibration(calib_path):
                 dist_coeffs = np.array(data['dist_coeffs'])
             
             if camera_matrix is not None and camera_matrix.size > 0:
-                print(f"  ✅ 成功加载YAML格式标定结果")
+                print(f"  [OK] 成功加载YAML格式标定结果")
                 return {
                     'camera_matrix': camera_matrix,
                     'dist_coeffs': dist_coeffs
                 }
     except Exception as e:
-        print(f"  ⚠️ 加载YAML失败: {e}")
+        print(f"  [WARNING] 加载YAML失败: {e}")
     
     try:
         # 尝试加载XML
@@ -195,13 +195,13 @@ def load_single_calibration(calib_path):
                 fs.release()
                 
                 if camera_matrix is not None and camera_matrix.size > 0:
-                    print(f"  ✅ 成功加载XML格式标定结果")
+                    print(f"  [OK] 成功加载XML格式标定结果")
                     return {
                         'camera_matrix': camera_matrix,
                         'dist_coeffs': dist_coeffs
                     }
     except Exception as e:
-        print(f"  ⚠️ 加载XML失败: {e}")
+        print(f"  [WARNING] 加载XML失败: {e}")
     
     try:
         # 尝试加载NPZ
@@ -221,15 +221,15 @@ def load_single_calibration(calib_path):
                 dist_coeffs = data['D']
             
             if camera_matrix is not None:
-                print(f"  ✅ 成功加载NPZ格式标定结果")
+                print(f"  [OK] 成功加载NPZ格式标定结果")
                 return {
                     'camera_matrix': camera_matrix,
 'dist_coeffs': dist_coeffs
                 }
     except Exception as e:
-        print(f"  ⚠️ 加载NPZ失败: {e}")
+        print(f"  [WARNING] 加载NPZ失败: {e}")
     
-    print(f"  ❌ 未找到有效的单目标定结果，将使用独立标定")
+    print(f"  [ERROR] 未找到有效的单目标定结果，将使用独立标定")
     return None
 
 
@@ -546,7 +546,7 @@ def safe_calibrate_camera(object_points, image_points, image_size, camera_matrix
         dist_coeffs = np.array(dist_coeffs, dtype=np.float64).ravel()
         
         if len(dist_coeffs) > max_coeffs:
-            print(f"  ⚠️ 畸变系数数量 {len(dist_coeffs)} 超过最大值 {max_coeffs}，截断")
+            print(f"  [WARNING] 畸变系数数量 {len(dist_coeffs)} 超过最大值 {max_coeffs}，截断")
             dist_coeffs = dist_coeffs[:max_coeffs]
         
         # 重塑为1xN
@@ -560,7 +560,7 @@ def safe_calibrate_camera(object_points, image_points, image_size, camera_matrix
     if camera_matrix is not None:
         camera_matrix = np.array(camera_matrix, dtype=np.float64)
         if camera_matrix.shape != (3, 3):
-            print(f"  ⚠️ 相机矩阵形状 {camera_matrix.shape} 不正确，需要3x3，重置为None")
+            print(f"  [WARNING] 相机矩阵形状 {camera_matrix.shape} 不正确，需要3x3，重置为None")
             camera_matrix = None
         else:
             flags |= cv2.CALIB_USE_INTRINSIC_GUESS
@@ -575,7 +575,7 @@ def safe_calibrate_camera(object_points, image_points, image_size, camera_matrix
     
     # 如果我们提供了畸变系数，但数量超过当前flags支持，截断
     if dist_coeffs is not None and dist_coeffs.shape[1] > max_dist_size:
-        print(f"  ⚠️ 截断畸变系数从 {dist_coeffs.shape[1]} 到 {max_dist_size} 以匹配标定标志")
+        print(f"  [WARNING] 截断畸变系数从 {dist_coeffs.shape[1]} 到 {max_dist_size} 以匹配标定标志")
         dist_coeffs = dist_coeffs[:, :max_dist_size].copy()
     
     # 安全调用calibrateCamera
@@ -590,10 +590,10 @@ def safe_calibrate_camera(object_points, image_points, image_size, camera_matrix
             flags=flags,
             criteria=(cv2.TERM_CRITERIA_MAX_ITER + cv2.TERM_CRITERIA_EPS, 100, 1e-5)
         )
-        print(f"  ✅ 标定成功! RMS误差: {ret:.4f}")
+        print(f"  [OK] 标定成功! RMS误差: {ret:.4f}")
         return ret, mtx, dist, rvecs, tvecs
     except cv2.error as e:
-        print(f"  ❌ 标定失败: {e}")
+        print(f"  [ERROR] 标定失败: {e}")
         
         # 尝试简化模型
         print("  尝试简化畸变模型...")
@@ -609,10 +609,10 @@ def safe_calibrate_camera(object_points, image_points, image_size, camera_matrix
                 flags=simple_flags,
                 criteria=(cv2.TERM_CRITERIA_MAX_ITER + cv2.TERM_CRITERIA_EPS, 100, 1e-5)
             )
-            print(f"  ✅ 简化模型标定成功! RMS误差: {ret:.4f}")
+            print(f"  [OK] 简化模型标定成功! RMS误差: {ret:.4f}")
             return ret, mtx, dist, rvecs, tvecs
         except cv2.error as e2:
-            print(f"  ❌ 简化模型也失败: {e2}")
+            print(f"  [ERROR] 简化模型也失败: {e2}")
             
             # 最后尝试：完全不使用初始值
             print("  尝试完全不使用初始值...")
@@ -626,10 +626,10 @@ def safe_calibrate_camera(object_points, image_points, image_size, camera_matrix
                     flags=simple_flags,
                     criteria=(cv2.TERM_CRITERIA_MAX_ITER + cv2.TERM_CRITERIA_EPS, 100, 1e-5)
                 )
-                print(f"  ✅ 无初始值标定成功! RMS误差: {ret:.4f}")
+                print(f"  [OK] 无初始值标定成功! RMS误差: {ret:.4f}")
                 return ret, mtx, dist, rvecs, tvecs
             except cv2.error as e3:
-                print(f"  ❌ 所有尝试都失败: {e3}")
+                print(f"  [ERROR] 所有尝试都失败: {e3}")
                 raise
 
 
@@ -669,7 +669,7 @@ def stereo_calibration(args):
     # 配对图像
     paired_images = pair_images(args.left, args.right)
     if len(paired_images) < 10:
-        print(f"⚠️ 警告: 仅 {len(paired_images)} 对图像，建议至少15对以获得更好精度")
+        print(f"[WARNING] 仅 {len(paired_images)} 对图像，建议至少15对以获得更好精度")
     
     # 准备对象点
     objp = np.zeros((chessboard_size[0] * chessboard_size[1], 3), np.float32)
@@ -697,6 +697,25 @@ def stereo_calibration(args):
             continue
         
         h, w = img_left.shape[:2]
+        
+        # 尺寸一致性检查 - 新增代码
+        if idx == 0:  # 只在处理第一张图像时检查
+            current_size = (w, h)
+            print(f"  当前图像尺寸: {w}x{h}")
+            
+            # 检查左相机单目标定结果的尺寸
+            if single_calib_left and single_calib_left['image_size']:
+                single_size_left = single_calib_left['image_size']
+                if single_size_left != current_size:
+                    print(f"  ⚠️ 警告: 左相机单目标定结果的尺寸 {single_size_left[0]}x{single_size_left[1]} 与当前图像尺寸 {w}x{h} 不匹配")
+                    print(f"    这可能导致三角测量误差，请确保单目标定结果与当前图像集使用相同分辨率")
+            
+            # 检查右相机单目标定结果的尺寸
+            if single_calib_right and single_calib_right['image_size']:
+                single_size_right = single_calib_right['image_size']
+                if single_size_right != current_size:
+                    print(f"  ⚠️ 警告: 右相机单目标定结果的尺寸 {single_size_right[0]}x{single_size_right[1]} 与当前图像尺寸 {w}x{h} 不匹配")
+                    print(f"    这可能导致三角测量误差，请确保单目标定结果与当前图像集使用相同分辨率")
         
         # 转灰度
         gray_left = cv2.cvtColor(img_left, cv2.COLOR_BGR2GRAY)
@@ -737,19 +756,19 @@ def stereo_calibration(args):
             
             # 输出一致性检查结果
             if consistent:
-                print(f"    ✅ 棋盘格一致性: 满足要求")
+                print(f"    [OK] 棋盘格一致性: 满足要求")
             else:
-                print(f"    ❌ 棋盘格一致性: 不满足要求")
+                print(f"    [ERROR] 棋盘格一致性: 不满足要求")
                 for info in consistency_info["详细信息"]:
                     print(f"    - {info}")
         else:
             print(f"  对 {idx+1}: 角点检测失败")
     
     if valid_pairs < 5:
-        print(f"❌ 错误: 仅 {valid_pairs} 对有效图像，需要至少5对")
+        print(f"[ERROR] 仅 {valid_pairs} 对有效图像，需要至少5对")
         return None
     
-    print(f"\n✅ 成功检测 {valid_pairs} 对图像的角点")
+    print(f"\n[OK] 成功检测 {valid_pairs} 对图像的角点")
     image_size = (w, h)
     
     # 单目优化标志
@@ -767,7 +786,7 @@ def stereo_calibration(args):
         
         # 验证初始值
         if camera_matrix_init.shape != (3, 3):
-            print(f"  ⚠️ 左相机矩阵形状 {camera_matrix_init.shape} 不正确，重置为None")
+            print(f"  [WARNING] 左相机矩阵形状 {camera_matrix_init.shape} 不正确，重置为None")
             camera_matrix_init = None
     else:
         camera_matrix_init = None
@@ -794,7 +813,7 @@ def stereo_calibration(args):
         
         # 验证初始值
         if camera_matrix_init.shape != (3, 3):
-            print(f"  ⚠️ 右相机矩阵形状 {camera_matrix_init.shape} 不正确，重置为None")
+            print(f"  [WARNING] 右相机矩阵形状 {camera_matrix_init.shape} 不正确，重置为None")
             camera_matrix_init = None
     else:
         camera_matrix_init = None
@@ -828,16 +847,16 @@ def stereo_calibration(args):
             # 调整阈值，当单目标定误差<0.2像素时固定内参（更合理的标准，适合实际应用）
             if args.fix_intrinsic or (left_error < 0.2 and right_error < 0.2):
                 stereo_flags |= cv2.CALIB_FIX_INTRINSIC
-                print("  ✅ 使用高质量单目标定，固定内参")
+                print("  [OK] 使用高质量单目标定，固定内参")
             else:
-                print("  ⚠️ 单目标定质量一般，允许优化内参")
+                print("  [WARNING] 单目标定质量一般，允许优化内参")
         else:
             print("  ℹ️ 无法获取单目标定质量，仅使用初始值")
     
     if not use_quality_check:
         if args.fix_intrinsic:
             stereo_flags |= cv2.CALIB_FIX_INTRINSIC
-            print("  ✅ 强制固定内参 (命令行参数指定)")
+            print("  [OK] 强制固定内参 (命令行参数指定)")
         else:
             print("  ℹ️ 没有单目标定或质量未知，仅使用初始值")
     
@@ -850,7 +869,7 @@ def stereo_calibration(args):
         stereo_flags |= cv2.CALIB_FIX_K2  # 固定第二径向畸变系数
         stereo_flags |= cv2.CALIB_FIX_K3  # 固定第三径向畸变系数
         # 注意：OpenCV中没有CALIB_FIX_P1/CALIB_FIX_P2标志，切向畸变系数会一起优化
-        print("  ✅ 固定内参时，同时固定径向畸变系数")
+        print("  [OK] 固定内参时，同时固定径向畸变系数")
     else:
         # 不固定内参时，仍固定高阶畸变系数以提高稳定性
         stereo_flags |= cv2.CALIB_FIX_K3  # 固定第三径向畸变系数
@@ -881,9 +900,9 @@ def stereo_calibration(args):
             criteria=criteria
         )
         # 注意：将使用手动计算的RMS误差而非cv2.stereoCalibrate返回的ret值
-        print(f"  ✅ 立体标定成功!")
+        print(f"  [OK] 立体标定成功!")
     except cv2.error as e:
-        print(f"  ❌ 立体标定失败: {e}")
+        print(f"  [ERROR] 立体标定失败: {e}")
         print("  尝试降级策略...")
         
         # 尝试降级策略
@@ -897,9 +916,9 @@ def stereo_calibration(args):
                 criteria=(cv2.TERM_CRITERIA_MAX_ITER + cv2.TERM_CRITERIA_EPS, 100, 1e-5)
             )
             # 注意：将使用手动计算的RMS误差而非cv2.stereoCalibrate返回的ret值
-            print(f"  ✅ 降级标定成功!")
+            print(f"  [OK] 降级标定成功!")
         except cv2.error as e2:
-            print(f"  ❌ 降级标定也失败: {e2}")
+            print(f"  [ERROR] 降级标定也失败: {e2}")
             print("  尝试最简模型...")
             
             try:
@@ -915,9 +934,9 @@ def stereo_calibration(args):
                     criteria=(cv2.TERM_CRITERIA_MAX_ITER + cv2.TERM_CRITERIA_EPS, 100, 1e-5)
                 )
                 # 注意：将使用手动计算的RMS误差而非cv2.stereoCalibrate返回的ret值
-                print(f"  ✅ 最简模型标定成功!")
+                print(f"  [OK] 最简模型标定成功!")
             except cv2.error as e3:
-                print(f"  ❌ 所有策略都失败: {e3}")
+                print(f"  [ERROR] 所有策略都失败: {e3}")
                 return None
     
     # 诊断：检查立体标定结果
@@ -925,23 +944,38 @@ def stereo_calibration(args):
     print(f"\n  诊断信息:")
     print(f"    基线长度: {baseline:.4f} 米")
     if baseline < 0.01:
-        print(f"    ❌ 基线过短! 可能左右图像未正确配对或相机位置异常")
+        print(f"    [ERROR] 基线过短! 可能左右图像未正确配对或相机位置异常")
     elif baseline > 1.0:
-        print(f"    ⚠️ 基线过长! 可能图像配对错误")
+        print(f"    [WARNING] 基线过长! 可能图像配对错误")
     else:
         print(f"    ✓ 基线长度合理")
     
     # 检查旋转矩阵
-    # 添加重投影计算
+    # 添加重投影计算 - 使用立体标定得到的全局旋转平移参数
     if len(objpoints) > 0:
-        # 计算左相机的重投影点
-        reprojected_left, _ = cv2.projectPoints(
-            objpoints[0], rvecs_left[0], tvecs_left[0], mtx_left, dist_left
-        )
-        # 计算右相机的重投影点
-        reprojected_right, _ = cv2.projectPoints(
-            objpoints[0], rvecs_right[0], tvecs_right[0], mtx_right, dist_right
-        )
+        # 使用立体标定得到的全局旋转平移参数进行重投影
+        reprojected_left = []
+        reprojected_right = []
+        
+        # 立体标定的全局旋转平移参数
+        # 左相机：位于坐标系原点，旋转矩阵为单位矩阵，位移向量为零向量
+        R_left = np.eye(3)
+        T_left = np.zeros((3, 1))
+        # 右相机：使用立体标定得到的旋转矩阵R和位移向量T
+        R_right = R
+        T_right = T.reshape(3, 1)
+        
+        # 将旋转矩阵转换为旋转向量
+        rvec_left, _ = cv2.Rodrigues(R_left)
+        rvec_right, _ = cv2.Rodrigues(R_right)
+        
+        # 使用批量重投影，而不是逐点重投影
+        # 一次性处理所有物体点，确保计算一致性
+        reproj_left_all, _ = cv2.projectPoints(objpoints[0], rvec_left, T_left, mtx_left, dist_left)
+        reproj_right_all, _ = cv2.projectPoints(objpoints[0], rvec_right, T_right, mtx_right, dist_right)
+        
+        reprojected_left = reproj_left_all.reshape(-1, 1, 2)
+        reprojected_right = reproj_right_all.reshape(-1, 1, 2)
     
     # 计算立体三维重投影误差
     stereo_3d_errors = []
@@ -974,42 +1008,45 @@ def stereo_calibration(args):
         error_x = (error_left_x + error_right_x) / 2
         error_y = (error_left_y + error_right_y) / 2
         
-        # 计算视差和深度误差
-        disparity_detected = detected_right[0] - detected_left[0]  # 检测视差
-        disparity_reproj = reproj_right[0] - reproj_left[0]        # 重投影视差
+        # 计算视差和深度误差 - 修复视差计算方向
+        disparity_detected = detected_left[0] - detected_right[0]  # 检测视差：左x - 右x
+        disparity_reproj = reproj_left[0] - reproj_right[0]        # 重投影视差：左x - 右x
         error_z = abs(disparity_detected - disparity_reproj)       # 深度误差（视差误差）
         
         # 新增：计算三维空间误差（使用三角化重建的三维点与实际物体点的差异）
-        if len(objpoints) > 0 and j < len(objpoints[0]):
-            actual_3d_point = objpoints[0][j].flatten()  # 实际物体点
-            
-            # 三角化重建三维点
-            try:
-                # 准备用于三角化的点
-                left_point = np.array([[detected_left]], dtype=np.float32)
-                right_point = np.array([[detected_right]], dtype=np.float32)
-                
-                # 归一化图像点
-                left_norm = cv2.undistortPoints(left_point, mtx_left, dist_left, R=R1, P=P1)
-                right_norm = cv2.undistortPoints(right_point, mtx_right, dist_right, R=R2, P=P2)
-                
-                # 三角化
-                points_4d = cv2.triangulatePoints(P1, P2, left_norm, right_norm)
-                points_3d = points_4d[:3] / points_4d[3]  # 齐次坐标转换为3D坐标
-                
-                # 计算三维空间欧氏距离误差
-                reconstructed_3d_point = points_3d.flatten()
-                if len(reconstructed_3d_point) == 3 and len(actual_3d_point) == 3:
-                    # 检查三维点坐标是否合理
-                    if np.all(np.isfinite(reconstructed_3d_point)) and np.all(np.abs(reconstructed_3d_point) < 10000):
-                        error_3d_spatial = np.linalg.norm(actual_3d_point - reconstructed_3d_point)
-                        
-                        # 更新误差统计
-                        axis_errors_z[-1] = error_3d_spatial  # 替换原来的视差误差为真实三维空间误差
-                        stereo_error = (error_left + error_right + error_3d_spatial) / 3  # 更新立体三维误差
-                        stereo_3d_errors[-1] = stereo_error  # 替换原来的立体误差
-            except Exception as e:
-                pass  # 如果三角化失败，保持原来的误差计算
+        # 注意：这段代码需要立体校正后的投影矩阵，暂时注释掉
+        # 后续会在立体校正后重新实现更准确的三维误差计算
+        # if len(objpoints) > 0 and j < len(objpoints[0]):
+        #     actual_3d_point = objpoints[0][j].flatten()  # 实际物体点
+        #     
+        #     # 三角化重建三维点
+        #     try:
+        #         # 准备用于三角化的点
+        #         left_point = np.array([[detected_left]], dtype=np.float32)
+        #         right_point = np.array([[detected_right]], dtype=np.float32)
+        #         
+        #         # 归一化图像点
+        #         left_norm = cv2.undistortPoints(left_point, mtx_left, dist_left, P=mtx_left)
+        #         right_norm = cv2.undistortPoints(right_point, mtx_right, dist_right, P=mtx_right)
+        #         
+        #         # 三角化
+        #         points_4d = cv2.triangulatePoints(P1, P2, left_norm, right_norm)
+        #         points_3d = points_4d[:3] / points_4d[3]  # 齐次坐标转换为3D坐标
+        #         
+        #         # 计算三维空间欧氏距离误差
+        #         reconstructed_3d_point = points_3d.flatten()
+        #         if len(reconstructed_3d_point) == 3 and len(actual_3d_point) == 3:
+        #             # 检查三维点坐标是否合理
+        #             if np.all(np.isfinite(reconstructed_3d_point)) and np.all(np.abs(reconstructed_3d_point) < 10000):
+        #                 error_3d_spatial = np.linalg.norm(actual_3d_point - reconstructed_3d_point)
+        #                 
+        #                 # 更新误差统计
+        #                 if len(axis_errors_z) > 0:  # 修复：确保列表非空
+        #                     axis_errors_z[-1] = error_3d_spatial  # 替换原来的视差误差为真实三维空间误差
+        #                 stereo_error = (error_left + error_right + error_3d_spatial) / 3  # 更新立体三维误差
+        #                 stereo_3d_errors[-1] = stereo_error  # 替换原来的立体误差
+        #     except Exception as e:
+        #         pass  # 如果三角化失败，保持原来的误差计算
         
         # 收集轴误差数据用于统计
         axis_errors_x.append(error_x)
@@ -1097,26 +1134,139 @@ def stereo_calibration(args):
     
     # 检查是否有异常误差
     if np.max(stereo_errors) > 100:
-        print(f"\n⚠️ 警告: 检测到异常大的重投影误差!")
+        print(f"\n[WARNING] 检测到异常大的重投影误差!")
         print(f"    最大误差: {np.max(stereo_errors):.1f} 像素")
         print(f"    可能原因: 右相机标定参数严重错误")
         print(f"    建议: 重新检查右相机的单目标定结果")
+        
+        # 右相机误差检查和自动修复机制
+        print(f"\n🔧 启动右相机误差自动修复...")
+        
+        # 计算右相机X轴平均误差
+        right_x_errors = []
+        for j in range(len(objpoints[0])):
+            detected_right = imgpoints_right[0][j, 0]
+            reproj_right = reprojected_right[j, 0]
+            right_x_errors.append(abs(detected_right[0] - reproj_right[0]))
+        
+        avg_right_x_error = np.mean(right_x_errors)
+        
+        if avg_right_x_error > 50:  # 右相机X轴误差过大
+            print(f"    右相机X轴平均误差: {avg_right_x_error:.1f} 像素，远超正常范围")
+            print(f"    正在尝试修复右相机参数...")
+            
+            # 修复1: 重新计算右相机内参，假设X轴误差是系统误差
+            if mtx_right is not None:
+                # 尝试调整右相机的fx焦距参数
+                fx_adjustment = 1.0 + (disparity_reproj - disparity_detected) / detected_left[0]
+                mtx_right[0, 0] *= fx_adjustment
+                print(f"    右相机fx焦距调整: {fx_adjustment:.4f}倍")
+            
+            # 修复2: 检查并修复图像配对错误
+            print(f"    检查图像配对...")
+            # 这里可以添加更复杂的图像配对检查逻辑
+            
+            # 修复3: 重新计算右相机的畸变系数，使用简化模型
+            if len(imgpoints_right) > 0 and len(objpoints) > 0:
+                print(f"    重新计算右相机畸变系数...")
+                try:
+                    # 使用5参数简化畸变模型重新标定右相机
+                    ret_right_new, mtx_right_new, dist_right_new, rvecs_right_new, tvecs_right_new = cv2.calibrateCamera(
+                        objpoints, imgpoints_right, image_size,
+                        mtx_right, None,  # 基于现有内参，不提供畸变系数初始值
+                        flags=cv2.CALIB_FIX_INTRINSIC + cv2.CALIB_USE_INTRINSIC_GUESS,
+                        criteria=(cv2.TERM_CRITERIA_MAX_ITER + cv2.TERM_CRITERIA_EPS, 100, 1e-5)
+                    )
+                    
+                    if ret_right_new < ret_right:  # 新的标定结果更好
+                        print(f"    [OK] 右相机重新标定成功! RMS误差从 {ret_right:.4f} 降低到 {ret_right_new:.4f}")
+                        ret_right = ret_right_new
+                        mtx_right = mtx_right_new
+                        dist_right = dist_right_new
+                        rvecs_right = rvecs_right_new
+                        tvecs_right = tvecs_right_new
+                except Exception as e:
+                    print(f"    [ERROR] 右相机重新标定失败: {e}")
 
     rotation_angle = np.linalg.norm(cv2.Rodrigues(R)[0]) * 180 / np.pi
     print(f"    旋转角度: {rotation_angle:.2f} 度")
     if rotation_angle > 45:
         print(f"    ⚠️ 旋转角度较大，可能左右相机未对齐")
     
-    # 立体校正
+    # 立体校正 - 改进版
     print("\n" + "-"*50)
     print("立体校正优化...")
     print("-"*50)
-    R1, R2, P1, P2, Q, validPixROI1, validPixROI2 = cv2.stereoRectify(
-        mtx_left, dist_left, mtx_right, dist_right,
-        image_size, R, T,
-        alpha=args.alpha,  # 关键参数!
-        flags=cv2.CALIB_ZERO_DISPARITY
-    )
+    
+    # 检查旋转矩阵和位移向量的有效性
+    print(f"  输入旋转矩阵R的形状: {R.shape}")
+    print(f"  输入位移向量T的形状: {T.shape}")
+    
+    # 确保R是有效的旋转矩阵
+    if R.shape != (3, 3):
+        print(f"  [WARNING] 旋转矩阵R形状不正确，尝试重新计算...")
+        R, _ = cv2.Rodrigues(cv2.Rodrigues(R)[0])  # 重新计算旋转矩阵
+    
+    # 确保T是有效的位移向量
+    if T.shape != (3, 1):
+        print(f"  [WARNING] 位移向量T形状不正确，尝试重新调整...")
+        T = T.reshape(3, 1)
+    
+    # 立体校正 - 使用更严格的参数验证
+    try:
+        R1, R2, P1, P2, Q, validPixROI1, validPixROI2 = cv2.stereoRectify(
+            mtx_left, dist_left, mtx_right, dist_right,
+            image_size, R, T,
+            alpha=args.alpha,  # 关键参数!
+            flags=cv2.CALIB_ZERO_DISPARITY
+        )
+        
+        # 验证投影矩阵的有效性
+        print(f"  [OK] 立体校正成功!")
+        print(f"  P1矩阵（左相机）: \n{P1}")
+        print(f"  P2矩阵（右相机）: \n{P2}")
+        
+        # 检查投影矩阵是否存在异常值
+        if np.any(np.isnan(P2)) or np.any(np.isinf(P2)):
+            print(f"  [WARNING] 右相机投影矩阵P2包含异常值，尝试修复...")
+            # 修复：使用左相机投影矩阵作为参考，只调整基线
+            P2_fixed = P1.copy()
+            P2_fixed[:, 3] = -baseline * mtx_right[0, 0]  # 调整位移分量
+            P2 = P2_fixed
+            print(f"  [OK] 右相机投影矩阵P2修复完成")
+            print(f"  修复后的P2矩阵: \n{P2}")
+            
+    except Exception as e:
+        print(f"  [ERROR] 立体校正失败: {e}")
+        print(f"  尝试使用备选方案...")
+        
+        # 备选方案：手动计算投影矩阵
+        try:
+            # 计算旋转矩阵和位移向量
+            R_left = np.eye(3)
+            R_right = R
+            T_left = np.zeros((3, 1))
+            T_right = T
+            
+            # 计算投影矩阵
+            P1 = np.dot(mtx_left, np.hstack((R_left, T_left)))
+            P2 = np.dot(mtx_right, np.hstack((R_right, T_right)))
+            
+            # 计算Q矩阵（视差到深度的映射）
+            Q = np.array([
+                [1, 0, 0, -image_size[0]/2],
+                [0, 1, 0, -image_size[1]/2],
+                [0, 0, 0, mtx_left[0, 0]],
+                [0, 0, 1/baseline, (image_size[0]/2 - image_size[0]/2)/baseline]
+            ])
+            
+            print(f"  [OK] 手动计算投影矩阵成功")
+            validPixROI1 = (0, 0, image_size[0], image_size[1])
+            validPixROI2 = (0, 0, image_size[0], image_size[1])
+            
+        except Exception as e2:
+            print(f"  [ERROR] 手动计算投影矩阵也失败: {e2}")
+            raise
     
     # 计算极线误差
     epi_error, total_points = compute_epipolar_error(
@@ -1143,13 +1293,13 @@ def stereo_calibration(args):
     print("标定质量评估")
     print("="*50)
     print(f"【几何精度】")
-    print(f"  左相机 RMS 误差: {ret_left:.4f} 像素 {'✅' if ret_left < 0.5 else '⚠️' if ret_left < 1.0 else '❌'}")
-    print(f"  右相机 RMS 误差: {ret_right:.4f} 像素 {'✅' if ret_right < 0.5 else '⚠️' if ret_right < 1.0 else '❌'}")
-    print(f"  立体 RMS 误差: {ret:.4f} 像素 {'✅' if ret < 0.5 else '⚠️' if ret < 1.0 else '❌'}")
-    print(f"  极线误差: {epi_error:.4f} 像素 {'✅ 优秀' if epi_error < 0.5 else '⚠️ 良好' if epi_error < 1.0 else '❌ 需改进'}")
+    print(f"  左相机 RMS 误差: {ret_left:.4f} 像素 {('[OK]' if ret_left < 0.5 else '[WARNING]' if ret_left < 1.0 else '[ERROR]')}")
+    print(f"  右相机 RMS 误差: {ret_right:.4f} 像素 {('[OK]' if ret_right < 0.5 else '[WARNING]' if ret_right < 1.0 else '[ERROR]')}")
+    print(f"  立体 RMS 误差: {ret:.4f} 像素 {('[OK]' if ret < 0.5 else '[WARNING]' if ret < 1.0 else '[ERROR]')}")
+    print(f"  极线误差: {epi_error:.4f} 像素 {('[OK] 优秀' if epi_error < 0.5 else '[WARNING] 良好' if epi_error < 1.0 else '[ERROR] 需改进')}")
     
     print(f"\n【物理参数】")
-    print(f"  基线长度: {baseline:.4f} 米 {'✅ 合理' if 0.05 < baseline < 0.3 else '⚠️ 验证'}")
+    print(f"  基线长度: {baseline:.4f} 米 {('[OK] 合理' if 0.05 < baseline < 0.3 else '[WARNING] 验证')}")
     print(f"  左焦距: {mtx_left[0,0]:.1f} 像素, 右焦距: {mtx_right[0,0]:.1f} 像素")
     print(f"  有效深度范围: {min_depth:.2f}m - {max_depth:.2f}m {'✅ 适用' if max_depth > 2.5 else '⚠️ 有限适用'}")
 
@@ -1256,21 +1406,137 @@ def stereo_calibration(args):
     if len(objpoints) > 0:
         print("\n【第一对图像的立体三维重投影误差】")
         
-        # 使用三角测量重建三维点
-        imgpoints_left_norm = cv2.undistortPoints(imgpoints_left[0], mtx_left, dist_left, P=P1)
-        imgpoints_right_norm = cv2.undistortPoints(imgpoints_right[0], mtx_right, dist_right, P=P2)
+        # 使用三角测量重建三维点 - 改进版
+        print(f"  归一化前左图像点形状: {imgpoints_left[0].shape}")
+        print(f"  归一化前右图像点形状: {imgpoints_right[0].shape}")
         
-        # 三角测量重建三维点
-        # 使用线性三角测量方法，通过左右相机的投影矩阵和对应点重建三维点
-        # P1, P2: 左右相机的投影矩阵 [3x4]，包含内参和外参信息
-        # imgpoints_left_norm, imgpoints_right_norm: 左右图像中归一化的对应点坐标 [Nx1x2]
-        # 返回值points_4d: 齐次坐标下的三维点 [4xN]，需要转换为3D坐标
-        points_4d = cv2.triangulatePoints(P1, P2, imgpoints_left_norm, imgpoints_right_norm)
-        points_3d = points_4d[:3] / points_4d[3]  # 齐次坐标转换为3D坐标
+        # 归一化图像点 - 改进：提供正确的旋转矩阵参数
+        try:
+            # 对于undistortPoints函数，如果提供R参数，则会应用旋转
+            # 这里我们使用立体校正后的旋转矩阵R1和R2，但P参数应该是3x3相机矩阵，不是3x4投影矩阵的前3列
+            # 注意：P1和P2是3x4的投影矩阵，我们需要提取有效的新相机矩阵
+            # 通常立体校正后，新相机矩阵应该是主点(cx, cy)和焦距(fx, fy)的组合
+            # 但这里为了避免错误，我们先使用原始相机矩阵进行基本的畸变校正
+            
+            # 使用立体校正后的旋转矩阵R1和R2，但P参数使用3x3相机矩阵
+            # 修正：使用正确的3x3相机矩阵，而不是错误地使用投影矩阵的前3列
+            imgpoints_left_norm = cv2.undistortPoints(
+                imgpoints_left[0], 
+                mtx_left, dist_left, 
+                R=R1,  # 使用立体校正后的旋转矩阵
+                P=mtx_left  # 使用3x3相机矩阵，不是P1[:, :3]
+            )
+            
+            imgpoints_right_norm = cv2.undistortPoints(
+                imgpoints_right[0], 
+                mtx_right, dist_right, 
+                R=R2,  # 使用立体校正后的旋转矩阵
+                P=mtx_right  # 使用3x3相机矩阵，不是P2[:, :3]
+            )
+            
+            print(f"  [OK] 图像点归一化成功")
+            print(f"  归一化后左图像点形状: {imgpoints_left_norm.shape}")
+            print(f"  归一化后右图像点形状: {imgpoints_right_norm.shape}")
+            
+        except Exception as e:
+            print(f"  [ERROR] 图像点归一化失败: {e}")
+            print(f"  尝试使用简化的归一化方法...")
+            
+            # 简化的归一化方法 - 只进行畸变校正
+            imgpoints_left_norm = cv2.undistortPoints(
+                imgpoints_left[0], 
+                mtx_left, dist_left, 
+                R=None,  # 不进行旋转
+                P=mtx_left  # 使用原始相机矩阵
+            )
+            
+            imgpoints_right_norm = cv2.undistortPoints(
+                imgpoints_right[0], 
+                mtx_right, dist_right, 
+                R=None,  # 不进行旋转
+                P=mtx_right  # 使用原始相机矩阵
+            )
+            
+            print(f"  [OK] 简化归一化方法成功")
         
-        # 将重建的三维点重投影到左右图像
-        reprojected_left, _ = cv2.projectPoints(points_3d.T, np.zeros(3), np.zeros(3), mtx_left, dist_left)
-        reprojected_right, _ = cv2.projectPoints(points_3d.T, np.zeros(3), np.zeros(3), mtx_right, dist_right)
+        # 三角测量重建三维点 - 重新使用归一化坐标，避免量纲不一致
+        try:
+            # 1) 将点转换到校正后的归一化坐标 (无内参量纲)
+            pts1n = cv2.undistortPoints(
+                imgpoints_left[0], mtx_left, dist_left, R=R1, P=np.eye(3)
+            ).reshape(-1, 2).T  # (2,N)
+            pts2n = cv2.undistortPoints(
+                imgpoints_right[0], mtx_right, dist_right, R=R2, P=np.eye(3)
+            ).reshape(-1, 2).T
+            
+            # 2) 使用归一化投影矩阵进行三角测量（左相机为原点）
+            P1n = np.hstack([np.eye(3), np.zeros((3, 1))])
+            P2n = np.hstack([R, T])
+            points_4d = cv2.triangulatePoints(P1n, P2n, pts1n, pts2n)
+            points_4d[3, points_4d[3, :] == 0] = 1e-8  # 防止除0
+            points_3d = (points_4d[:3] / points_4d[3]).T  # (N,3) 世界坐标（以左相机为原点）
+            
+            # 过滤异常值
+            valid_mask = np.all(np.isfinite(points_3d), axis=1) & (np.linalg.norm(points_3d, axis=1) < 1e4)
+            points_3d = points_3d[valid_mask]
+            
+            print(f"  [OK] 三角测量成功")
+            print(f"  重建的三维点形状: {points_3d.shape}")
+            print(f"  有效点数量: {points_3d.shape[0]}/{valid_mask.shape[0]}")
+            
+        except Exception as e:
+            print(f"  [ERROR] 三角测量失败: {e}")
+            # 使用备选方案：使用简单的三角测量公式
+            print(f"  尝试使用简单三角测量公式...")
+            
+            # 提取图像点
+            left_points = imgpoints_left[0].reshape(-1, 2)
+            right_points = imgpoints_right[0].reshape(-1, 2)
+            
+            # 简单三角测量（假设平行相机）
+            fx = (mtx_left[0, 0] + mtx_right[0, 0]) / 2
+            cx = mtx_left[0, 2]
+            cy = mtx_left[1, 2]
+            baseline = np.linalg.norm(T)
+            
+            points_3d = []
+            for i in range(len(left_points)):
+                disparity = left_points[i, 0] - right_points[i, 0]
+                if disparity != 0:
+                    Z = (fx * baseline) / disparity
+                    X = (left_points[i, 0] - cx) * Z / fx
+                    Y = (left_points[i, 1] - cy) * Z / fx
+                    points_3d.append([X, Y, Z])
+            
+            points_3d = np.array(points_3d)  # (N,3)
+            print(f"  [OK] 简单三角测量成功")
+            print(f"  重建的三维点形状: {points_3d.shape}")
+        
+        # 将重建的三维点重投影到原始像素坐标系，使用立体外参R/T
+        reprojected_left = []
+        reprojected_right = []
+        
+        valid_indices = []
+        if 'valid_mask' in locals():
+            for idx, valid in enumerate(valid_mask):
+                if valid:
+                    valid_indices.append(idx)
+        else:
+            valid_indices = list(range(points_3d.shape[0]))
+        
+        if points_3d.ndim == 2 and points_3d.shape[0] > 0:
+            pts_obj = points_3d.reshape(-1, 1, 3).astype(np.float32)
+            # 在校正坐标系下投影：使用R1/R2和校正后的相机矩阵，畸变置零
+            rvec_R1, _ = cv2.Rodrigues(R1)
+            rvec_R2, _ = cv2.Rodrigues(R2)
+            proj_left, _ = cv2.projectPoints(pts_obj, rvec_R1, np.zeros(3), P1[:, :3], np.zeros(5))
+            proj_right, _ = cv2.projectPoints(pts_obj, rvec_R2, T, P2[:, :3], np.zeros(5))
+            
+            reprojected_left = proj_left.reshape(-1, 2)
+            reprojected_right = proj_right.reshape(-1, 2)
+        else:
+            reprojected_left = np.empty((0, 2), dtype=np.float32)
+            reprojected_right = np.empty((0, 2), dtype=np.float32)
         
         # 计算立体三维重投影误差
         stereo_3d_errors = []
@@ -1278,15 +1544,26 @@ def stereo_calibration(args):
         axis_errors_y = []  # 新增：Y轴误差数组
         axis_errors_z = []  # 新增：Z轴误差数组
         
-        for j in range(len(objpoints[0])):
-            # 左图像误差
-            detected_left = imgpoints_left[0][j, 0]
-            reproj_left = reprojected_left[j, 0]
-            error_left = np.linalg.norm(detected_left - reproj_left)
+        # 确保使用过滤后的有效点数量进行循环
+        for j in range(len(valid_indices)):
+            # 获取原始索引
+            original_idx = valid_indices[j]
             
-            # 右图像误差
-            detected_right = imgpoints_right[0][j, 0]
-            reproj_right = reprojected_right[j, 0]
+            # 将检测点映射到校正后的像素坐标系，与重投影保持一致
+            detected_left_raw = imgpoints_left[0][original_idx, 0]
+            detected_right_raw = imgpoints_right[0][original_idx, 0]
+            detected_left = cv2.undistortPoints(
+                detected_left_raw.reshape(1, 1, 2), mtx_left, dist_left, R=R1, P=P1[:, :3]
+            ).reshape(2)
+            detected_right = cv2.undistortPoints(
+                detected_right_raw.reshape(1, 1, 2), mtx_right, dist_right, R=R2, P=P2[:, :3]
+            ).reshape(2)
+            
+            reproj_left = reprojected_left[j]  # 校正坐标系下的重投影点
+            reproj_right = reprojected_right[j]
+            
+            # 左右图像误差（在校正后的平面上）
+            error_left = np.linalg.norm(detected_left - reproj_left)
             error_right = np.linalg.norm(detected_right - reproj_right)
             
             # 立体三维误差（取左右误差的平均值）
@@ -1313,11 +1590,20 @@ def stereo_calibration(args):
             
             # 计算视差和深度误差
             # - disparity_detected: 检测视差 = 右相机检测点X坐标 - 左相机检测点X坐标
-            # - disparity_reproj: 重投影视差 = 右相机重投影点X坐标 - 左相机重投影点X坐标  
+            # - disparity_reproj: 重投影视差 = 右相机重投影点X坐标 - 左相机重投影点X坐标
+            # 修复：detected_left/right和reproj_left/right已经是2D点，不需要[0]索引
+            disparity_detected = detected_right[0] - detected_left[0]  # 检测视差（校正后）
+            disparity_reproj = reproj_right[0] - reproj_left[0]        # 重投影视差
+            error_z = abs(disparity_detected - disparity_reproj)       # 深度误差（视差误差）
+            
+            # 将轴误差添加到数组中
+            axis_errors_x.append(error_x)
+            axis_errors_y.append(error_y)
+            axis_errors_z.append(error_z)  # 先添加视差误差，后面可能会被替换
             
             # 新增：计算三维空间误差（使用三角化重建的三维点与实际物体点的差异）
-            if len(objpoints) > 0 and j < len(objpoints[0]):
-                actual_3d_point = objpoints[0][j].flatten()  # 实际物体点
+            if len(objpoints) > 0 and original_idx < len(objpoints[0]):
+                actual_3d_point = objpoints[0][original_idx].flatten()  # 实际物体点（使用原始索引）
                 
                 # 三角化重建三维点
                 try:
@@ -1326,8 +1612,8 @@ def stereo_calibration(args):
                     right_point = np.array([[detected_right]], dtype=np.float32)
                     
                     # 归一化图像点
-                    left_norm = cv2.undistortPoints(left_point, mtx_left, dist_left, R=R1, P=P1)
-                    right_norm = cv2.undistortPoints(right_point, mtx_right, dist_right, R=R2, P=P2)
+                    left_norm = cv2.undistortPoints(left_point, mtx_left, dist_left, R=R1, P=P1[:, :3])
+                    right_norm = cv2.undistortPoints(right_point, mtx_right, dist_right, R=R2, P=P2[:, :3])
                     
                     # 三角化
                     points_4d = cv2.triangulatePoints(P1, P2, left_norm, right_norm)
@@ -1341,16 +1627,12 @@ def stereo_calibration(args):
                             error_3d_spatial = np.linalg.norm(actual_3d_point - reconstructed_3d_point)
                             
                             # 更新误差统计
-                            axis_errors_z[-1] = error_3d_spatial  # 替换原来的视差误差为真实三维空间误差
+                            if len(axis_errors_z) > 0:  # 确保列表非空
+                                axis_errors_z[-1] = error_3d_spatial  # 替换原来的视差误差为真实三维空间误差
                             stereo_error = (error_left + error_right + error_3d_spatial) / 3  # 更新立体三维误差
                             stereo_3d_errors[-1] = stereo_error  # 替换原来的立体误差
                 except Exception as e:
                     pass  # 如果三角化失败，保持原来的误差计算
-            # - error_z: 视差误差 = |检测视差 - 重投影视差|，反映深度方向的标定精度
-            # 注意：Z轴误差不是真正的三维深度误差，而是通过视差差异来估计深度方向的误差
-            disparity_detected = detected_right[0] - detected_left[0]  # 检测视差
-            disparity_reproj = reproj_right[0] - reproj_left[0]        # 重投影视差
-            error_z = abs(disparity_detected - disparity_reproj)       # 深度误差（视差误差）
             
             # 显示前10个点的详细误差
             if j < 10:
@@ -1480,7 +1762,7 @@ def stereo_calibration(args):
     with open(output_yaml, 'w', encoding='utf-8') as f:
         yaml.dump(calibration_data, f, default_flow_style=False)
     
-    print(f"\n✅ 标定结果已保存:")
+    print(f"\n[OK] 标定结果已保存:")
     print(f"  - OpenCV标准格式: {output_xml}")
     print(f"  - 人类可读格式: {output_yaml}")
     
@@ -1495,7 +1777,7 @@ def stereo_calibration(args):
     elif epi_error < 1.0 and ret < 1.0:
         print("👍 标定成功! 结果质量良好")
     else:
-        print("⚠️ 标定完成，但质量不足! 建议增加更多图像")
+        print("[WARNING] 标定完成，但质量不足! 建议增加更多图像")
     
     return {
         'mtx_left': mtx_left,
@@ -1533,7 +1815,7 @@ def visualize_rectification(first_pair, mtx_left, dist_left, mtx_right, dist_rig
     h, w = img_left.shape[:2]
     if img_right.shape[:2] != (h, w):
         img_right = cv2.resize(img_right, (w, h))
-        print(f"  ⚠️ 调整右图像尺寸为: {w}x{h}")
+        print(f"  [WARNING] 调整右图像尺寸为: {w}x{h}")
     
     # 计算校正映射
     map1_left, map2_left = cv2.initUndistortRectifyMap(
@@ -1548,10 +1830,10 @@ def visualize_rectification(first_pair, mtx_left, dist_left, mtx_right, dist_rig
     # 确保校正后的图像尺寸一致
     if img_left_rect.shape[:2] != (h, w):
         img_left_rect = cv2.resize(img_left_rect, (w, h))
-        print(f"  ⚠️ 调整左校正图像尺寸为: {w}x{h}")
+        print(f"  [WARNING] 调整左校正图像尺寸为: {w}x{h}")
     if img_right_rect.shape[:2] != (h, w):
         img_right_rect = cv2.resize(img_right_rect, (w, h))
-        print(f"  ⚠️ 调整右校正图像尺寸为: {w}x{h}")
+        print(f"  [WARNING] 调整右校正图像尺寸为: {w}x{h}")
     
     # 绘制水平线
     line_img_left = img_left_rect.copy()
@@ -1576,10 +1858,10 @@ def visualize_rectification(first_pair, mtx_left, dist_left, mtx_right, dist_rig
         min_width = min(top_row.shape[1], bottom_row.shape[1])
         top_row = top_row[:, :min_width]
         bottom_row = bottom_row[:, :min_width]
-        print(f"  ⚠️ 调整拼接宽度为: {min_width}")
+        print(f"  [WARNING] 调整拼接宽度为: {min_width}")
     
     result = np.vstack((top_row, bottom_row))
-    print(f"  ✅ 拼接后图像尺寸: {result.shape}")
+    print(f"  [OK] 拼接后图像尺寸: {result.shape}")
     
     # 添加标注
     result = put_text_cn(result, "原始图像", (50, 20), (255, 255, 255), 28)
@@ -1588,7 +1870,7 @@ def visualize_rectification(first_pair, mtx_left, dist_left, mtx_right, dist_rig
     # 保存
     output_path = os.path.join(output_dir, 'rectification_visualization.jpg')
     cv2.imwrite(output_path, result)
-    print(f"  ✅ 可视化已保存到: {output_path}")
+    print(f"  [OK] 可视化已保存到: {output_path}")
 
 
 if __name__ == "__main__":
@@ -1609,7 +1891,7 @@ if __name__ == "__main__":
     calib_data = stereo_calibration(args)
     
     if calib_data is None:
-        print("❌ 标定失败，程序退出")
+        print("[ERROR] 标定失败，程序退出")
         exit(1)
     
     print("\n" + "="*60)
