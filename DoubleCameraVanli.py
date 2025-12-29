@@ -168,11 +168,11 @@ class Stereo3DCalculator:
         
         # 当输入点是归一化相机坐标时，投影矩阵应该是：
         # 左相机: [I | 0] (3x4)
-        # 右相机: [R | T] (3x4)
+        # 右相机: [R | T] (3x4)，其中R是右相机相对于左相机的旋转矩阵
         proj_left = np.hstack((np.eye(3), np.zeros((3, 1))))
         proj_right = np.hstack((self.R, self.T))
         
-        # 三角测量
+        # 三角测量 - 注意：OpenCV的triangulatePoints需要点在归一化相机坐标系下
         points_4d = cv2.triangulatePoints(
             proj_left, 
             proj_right, 
@@ -371,12 +371,11 @@ class Stereo3DCalculator:
 # 使用示例
 if __name__ == "__main__":
     # 1. 从YAML文件读取相机参数
-    yaml_file_path = 'E:\\Investigation\\姿态绕杆检测\\Code\\calibration_results_double\\stereo_calibration.yaml'
+    yaml_file_path = 'E:\Investigation\PoseDetection\Code\calibration_results_double\calibration_double_qwen.yaml'
     
     try:
-        with open(yaml_file_path, 'r') as f:
-            # 使用FullLoader可以解析Python特有的标签
-            yaml_data = yaml.load(f, Loader=yaml.FullLoader)
+        with open(yaml_file_path, 'r', encoding='utf-8') as f:
+            yaml_data = yaml.safe_load(f)
         
         # 2. 转换为程序所需的参数格式
         camera_params = {
@@ -385,11 +384,26 @@ if __name__ == "__main__":
             "left_distortion": yaml_data['distortion_coeffs_left'],
             "right_distortion": yaml_data['distortion_coeffs_right'],
             "rotation_matrix": yaml_data['rotation_matrix'],
-            "translation_vector": yaml_data['translation_vector']  # 单位为米
+            "translation_vector": yaml_data['translation_vector']
         }
         
+        # 验证必要的参数是否存在
+        required_keys = ['camera_matrix_left', 'camera_matrix_right', 
+                        'distortion_coeffs_left', 'distortion_coeffs_right',
+                        'rotation_matrix', 'translation_vector']
+        missing_keys = [k for k in required_keys if k not in yaml_data]
+        if missing_keys:
+            print(f"错误: YAML文件中缺少必要的参数: {missing_keys}")
+            exit(1)
+        
+        # 计算并显示基线长度
+        baseline = np.linalg.norm(np.array(yaml_data['translation_vector']))
         print(f"成功从{yaml_file_path}读取相机参数")
-        print(f"基线长度: {yaml_data['baseline_m']} 米")
+        print(f"基线长度: {baseline:.3f} 米")
+        print(f"图像分辨率: {yaml_data['image_width']} x {yaml_data['image_height']}")
+        print(f"有效ROI左: {yaml_data['valid_roi_left']}")
+        print(f"有效ROI右: {yaml_data['valid_roi_right']}")
+        print(f"深度范围: {yaml_data['depth_range_m'][0]:.1f} ~ {yaml_data['depth_range_m'][1]:.1f} 米")
         
         # 3. 保存相机参数到JSON文件（可选）
         with open('camera_params.json', 'w') as f:
@@ -412,8 +426,8 @@ if __name__ == "__main__":
     calculator = Stereo3DCalculator('camera_params.json')
     
     # 3. 选择对应点 (替换为您的实际图像路径)
-    left_img_path = 'left\\left41.JPG'  # 替换为您的左图像路径
-    right_img_path = 'right\\right41.JPG'   # 替换为您的右图像路径
+    left_img_path = 'left\\left03.JPG'  # 替换为您的左图像路径
+    right_img_path = 'right\\right03.JPG'   # 替换为您的右图像路径
     
     # 检查图像是否存在
     import os
@@ -465,3 +479,9 @@ if __name__ == "__main__":
             print("计算结果已保存为 '3d_point_result.npy'")
     else:
         print("点选择失败，程序终止。")
+
+'''
+羽毛球场线内宽6.1m
+场地远点在左相机坐标系中的3D坐标: [-2.217873 -2.457974 14.956237]
+场地近点在左相机坐标系中的3D坐标: [-0.59665745  0.60452724 10.137915]
+'''
